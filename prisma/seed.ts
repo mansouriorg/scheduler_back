@@ -19,7 +19,7 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter } as any);
 
 async function main() {
-  console.log('🌱 Starting 4X MEGA database seeding with REALISTIC courses...');
+  console.log('🌱 Starting 4X MEGA database seeding with REALISTIC courses & EXPANDED data...');
 
   // 1. CLEANUP
   console.log('🧹 Cleaning existing data...');
@@ -72,7 +72,8 @@ async function main() {
       name: 'West Medical Campus',
       buildings: [
         { name: 'Medical Sciences', code: 'MED', floors: ['Ground', '1', '2'] },
-        { name: 'Nursing Wing', code: 'NUR', floors: ['Ground', '1'] }
+        { name: 'Nursing Wing', code: 'NUR', floors: ['Ground', '1'] },
+        { name: 'Pharmacy Block', code: 'PHA', floors: ['Ground', '1'] }
       ]
     },
     {
@@ -80,7 +81,8 @@ async function main() {
       buildings: [
         { name: 'Arts & Design', code: 'ART', floors: ['Ground', '1', '2'] },
         { name: 'Literature & History', code: 'LIT', floors: ['Ground', '1'] },
-        { name: 'Education Dept', code: 'EDU', floors: ['Ground', '1'] }
+        { name: 'Education Dept', code: 'EDU', floors: ['Ground', '1'] },
+        { name: 'Architecture Studio', code: 'ARC', floors: ['Ground', '1'] }
       ]
     },
     {
@@ -113,7 +115,7 @@ async function main() {
   console.log('🚪 Seeding 200+ Rooms...');
   const roomData: any[] = [];
   
-  const amphiBldgs = ['ENG', 'BUS', 'MED', 'ART', 'LAW', 'SCI', 'EDU'];
+  const amphiBldgs = ['ENG', 'BUS', 'MED', 'ART', 'LAW', 'SCI', 'EDU', 'PHA', 'ARC'];
   let amphiCount = 1;
   for (const bldg of amphiBldgs) {
     for (let i = 0; i < 6; i++) { 
@@ -121,33 +123,36 @@ async function main() {
     }
   }
 
-  const classBldgs = ['ENG', 'CSH', 'BUS', 'LAW', 'MED', 'NUR', 'ART', 'LIT', 'EDU', 'RES'];
+  // 🚨 ALL ROOMS UPGRADED TO 100 CAPACITY TO FIT MAX COHORTS
+  const classBldgs = ['ENG', 'CSH', 'BUS', 'LAW', 'MED', 'NUR', 'ART', 'LIT', 'EDU', 'RES', 'PHA', 'ARC'];
   for (const bldg of classBldgs) {
-    for (let i = 101; i <= 116; i++) { 
-      roomData.push({ name: `${bldg}-${i}`, capacity: 40, roomType: RoomType.CLASSROOM, equipment: [Equipment.WHITEBOARD, Equipment.PROJECTOR], floorId: getFloor(bldg, '1') });
+    for (let i = 101; i <= 120; i++) { // Increased to 20 classrooms per building to handle expanded data
+      roomData.push({ name: `${bldg}-${i}`, capacity: 100, roomType: RoomType.CLASSROOM, equipment: [Equipment.WHITEBOARD, Equipment.PROJECTOR], floorId: getFloor(bldg, '1') });
     }
   }
 
-  const labBldgs = ['CSH', 'ENG', 'BUS', 'RES'];
+  const labBldgs = ['CSH', 'ENG', 'BUS', 'RES', 'ARC'];
   for (const bldg of labBldgs) {
     for (let i = 1; i <= 10; i++) { 
-      roomData.push({ name: `PC Lab ${bldg}-${i}`, capacity: 30, roomType: RoomType.COMPUTER_LAB, equipment: [Equipment.COMPUTERS, Equipment.PROJECTOR], floorId: getFloor(bldg, '1') });
-      roomData.push({ name: `Mac Lab ${bldg}-${i}`, capacity: 30, roomType: RoomType.COMPUTER_LAB, equipment: [Equipment.MAC_COMPUTERS, Equipment.PROJECTOR], floorId: getFloor(bldg, 'Ground') });
+      roomData.push({ name: `PC Lab ${bldg}-${i}`, capacity: 100, roomType: RoomType.COMPUTER_LAB, equipment: [Equipment.COMPUTERS, Equipment.PROJECTOR], floorId: getFloor(bldg, '1') });
+      roomData.push({ name: `Mac Lab ${bldg}-${i}`, capacity: 100, roomType: RoomType.COMPUTER_LAB, equipment: [Equipment.MAC_COMPUTERS, Equipment.PROJECTOR], floorId: getFloor(bldg, 'Ground') });
     }
   }
 
-  for (let i = 1; i <= 10; i++) roomData.push({ name: `Chem Lab ${i}`, capacity: 25, roomType: RoomType.CHEMISTRY_LAB, equipment: [Equipment.CHEMISTRY_HOOD], floorId: getFloor('SCI', '1') });
-  for (let i = 1; i <= 10; i++) roomData.push({ name: `Bio Lab ${i}`, capacity: 25, roomType: RoomType.CHEMISTRY_LAB, equipment: [], floorId: getFloor('MED', '1') });
-  for (let i = 1; i <= 12; i++) roomData.push({ name: `Art Studio ${i}`, capacity: 20, roomType: RoomType.WORKSHOP, equipment: [Equipment.WHITEBOARD], floorId: getFloor('ART', '1') });
+  for (let i = 1; i <= 15; i++) roomData.push({ name: `Chem Lab ${i}`, capacity: 100, roomType: RoomType.CHEMISTRY_LAB, equipment: [Equipment.CHEMISTRY_HOOD], floorId: getFloor('SCI', '1') });
+  for (let i = 1; i <= 15; i++) roomData.push({ name: `Bio Lab ${i}`, capacity: 100, roomType: RoomType.CHEMISTRY_LAB, equipment: [], floorId: getFloor('MED', '1') });
+  for (let i = 1; i <= 15; i++) roomData.push({ name: `Pharma Lab ${i}`, capacity: 100, roomType: RoomType.CHEMISTRY_LAB, equipment: [Equipment.CHEMISTRY_HOOD], floorId: getFloor('PHA', '1') });
+  for (let i = 1; i <= 15; i++) roomData.push({ name: `Art Studio ${i}`, capacity: 100, roomType: RoomType.WORKSHOP, equipment: [Equipment.WHITEBOARD], floorId: getFloor('ART', '1') });
+  for (let i = 1; i <= 15; i++) roomData.push({ name: `Design Workshop ${i}`, capacity: 100, roomType: RoomType.WORKSHOP, equipment: [Equipment.WHITEBOARD, Equipment.PROJECTOR], floorId: getFloor('ARC', '1') });
 
   await prisma.room.createMany({ data: roomData });
 
-  // 4. PROFESSORS
-  console.log('👨‍🏫 Seeding 120 Professors...');
+  // 4. PROFESSORS (Increased from 120 to 150)
+  console.log('👨‍🏫 Seeding 150 Professors...');
   const profData: any[] = [];
-  const departments = ['Computer Science', 'Mathematics', 'Physics', 'Software Engineering', 'Business', 'Law', 'Fine Arts', 'Medicine', 'Nursing', 'Literature', 'Education', 'History'];
+  const departments = ['Computer Science', 'Mathematics', 'Physics', 'Software Engineering', 'Business', 'Law', 'Fine Arts', 'Medicine', 'Nursing', 'Literature', 'Education', 'History', 'Pharmacy', 'Architecture'];
   
-  for (let i = 1; i <= 120; i++) {
+  for (let i = 1; i <= 150; i++) {
     profData.push({
       name: i % 2 === 0 ? `Prof. Faculty Member ${i}` : `Dr. Academic Staff ${i}`,
       department: departments[i % departments.length],
@@ -162,9 +167,9 @@ async function main() {
   const fall26 = await prisma.term.create({ data: { name: 'Fall 2026', type: TermType.SEMESTER_1, startDate: new Date('2026-09-01T00:00:00Z'), endDate: new Date('2026-12-20T00:00:00Z') } });
   await prisma.term.create({ data: { name: 'Spring 2027', type: TermType.SEMESTER_2, startDate: new Date('2027-01-10T00:00:00Z'), endDate: new Date('2027-05-15T00:00:00Z') } });
 
-  // 6. COHORTS
+  // 6. COHORTS (Added ARC and PHA)
   console.log('👥 Seeding 100+ Student Cohorts...');
-  const cohortPrefixes = ['SWE', 'CS', 'IT', 'BUS', 'FIN', 'LAW', 'MED', 'NUR', 'ART', 'LIT', 'EDU', 'HIS', 'MCH', 'EE', 'PSY', 'SOC'];
+  const cohortPrefixes = ['SWE', 'CS', 'IT', 'BUS', 'FIN', 'LAW', 'MED', 'NUR', 'ART', 'LIT', 'EDU', 'HIS', 'MCH', 'EE', 'PSY', 'SOC', 'ARC', 'PHA'];
   const cohortData: any[] = [];
   
   for (const prefix of cohortPrefixes) {
@@ -182,15 +187,14 @@ async function main() {
     createdCohorts[c.name] = await prisma.cohort.create({ data: { name: c.name, headcount: c.hc, currentSemester: TermType.SEMESTER_1 } });
   }
 
-  // 7. COURSES (REALISTIC 120+ Course Blueprints)
-  console.log('📘 Seeding 120+ Realistic Course Blueprints...');
+  // 7. COURSES (REALISTIC 130+ Course Blueprints)
+  console.log('📘 Seeding Realistic Course Blueprints...');
   const courseTemplates: any[] = [
     // Core Base Courses
     { code: 'CS101', title: 'Intro to Programming', hrs: 60, comps: [{ t: ComponentType.LECTURE, rt: RoomType.AMPHI, h: 30, s: 1.5, eq: [Equipment.PROJECTOR] }, { t: ComponentType.TP, rt: RoomType.COMPUTER_LAB, h: 30, s: 1.5, eq: [Equipment.COMPUTERS] }] },
     { code: 'MTH101', title: 'Calculus I', hrs: 60, comps: [{ t: ComponentType.LECTURE, rt: RoomType.AMPHI, h: 30, s: 1.5, eq: [] }, { t: ComponentType.TD, rt: RoomType.CLASSROOM, h: 30, s: 1.5, eq: [Equipment.WHITEBOARD] }] },
   ];
 
-  // A massive array of realistic university courses
   const realisticCourses = [
     { code: 'SWE201', title: 'Web Technologies' }, { code: 'SWE202', title: 'Mobile App Development' }, { code: 'SWE301', title: 'Software Testing & QA' }, { code: 'SWE302', title: 'UI/UX Engineering' }, { code: 'SWE401', title: 'DevOps & CI/CD' }, { code: 'SWE402', title: 'Agile Project Management' },
     { code: 'CS203', title: 'Computer Architecture' }, { code: 'CS204', title: 'Operating Systems' }, { code: 'CS301', title: 'Database Management Systems' }, { code: 'CS302', title: 'Computer Networks' }, { code: 'CS303', title: 'Cryptography & Security' }, { code: 'CS401', title: 'Artificial Intelligence' }, { code: 'CS402', title: 'Machine Learning' }, { code: 'CS403', title: 'Natural Language Processing' }, { code: 'CS404', title: 'Computer Graphics' }, { code: 'CS405', title: 'Distributed Systems' }, { code: 'CS406', title: 'Blockchain Fundamentals' }, { code: 'CS407', title: 'Quantum Computing' },
@@ -210,6 +214,10 @@ async function main() {
     { code: 'SOC201', title: 'Sociological Theory' }, { code: 'SOC202', title: 'Social Inequality' }, { code: 'SOC301', title: 'Criminology' }, { code: 'SOC302', title: 'Urban Sociology' }, { code: 'SOC401', title: 'Globalization & Society' },
     { code: 'EE201', title: 'Circuit Analysis' }, { code: 'EE202', title: 'Digital Logic Design' }, { code: 'EE301', title: 'Signals and Systems' }, { code: 'EE302', title: 'Electromagnetics' }, { code: 'EE401', title: 'Control Systems' }, { code: 'EE402', title: 'Power Electronics' },
     { code: 'MCH201', title: 'Statics & Dynamics' }, { code: 'MCH202', title: 'Thermodynamics' }, { code: 'MCH301', title: 'Fluid Mechanics' }, { code: 'MCH302', title: 'Materials Science' }, { code: 'MCH401', title: 'Robotics & Automation' }, { code: 'MCH402', title: 'Heat Transfer' },
+    // NEW ARCHITECTURE COURSES
+    { code: 'ARC201', title: 'Architectural Design Fundamentals' }, { code: 'ARC202', title: 'History of Architecture' }, { code: 'ARC301', title: 'Urban Planning' }, { code: 'ARC302', title: 'Sustainable Building Design' }, { code: 'ARC401', title: 'Building Structures' }, { code: 'ARC402', title: 'Landscape Architecture' },
+    // NEW PHARMACY COURSES
+    { code: 'PHA201', title: 'Pharmaceutics I' }, { code: 'PHA202', title: 'Organic Chemistry for Pharmacy' }, { code: 'PHA301', title: 'Medicinal Chemistry' }, { code: 'PHA302', title: 'Pharmacokinetics' }, { code: 'PHA401', title: 'Clinical Pharmacy' }, { code: 'PHA402', title: 'Toxicology' },
   ];
 
   for (const c of realisticCourses) {
@@ -272,8 +280,8 @@ async function main() {
     if (['SWE', 'CS', 'IT', 'EE'].includes(majorPrefix)) {
       await assignCourse('CS101', cohortName); // Tech gets programming
       await assignCourse('MTH101', cohortName); // Tech gets math
-    } else if (['BUS', 'FIN', 'MKT'].includes(majorPrefix)) {
-      await assignCourse('MTH101', cohortName); // Business gets math
+    } else if (['BUS', 'FIN', 'MKT', 'ARC'].includes(majorPrefix)) {
+      await assignCourse('MTH101', cohortName); // Business & Arch get math
     }
 
     // Now, find all courses in our realistic catalog that perfectly match this cohort's major!

@@ -13,33 +13,51 @@ export class SchedulerService {
   async autoGenerate() {
     console.log('🚀 Gathering data for the Python Brain...');
     
-    // 1. Fetch resources from PostgreSQL
-    const rooms = await this.prisma.room.findMany();
+    // 1. Fetch resources from PostgreSQL with deeper geographic relations
+    const rooms = await this.prisma.room.findMany({
+      include: {
+        floor: {
+          include: {
+            building: true // 👈 NEW: Allows us to see which campus the room belongs to
+          }
+        }
+      }
+    });
+    
     const professors = await this.prisma.professor.findMany();
     
     // Fetch ONLY classes that haven't been scheduled yet!
     const classes = await this.prisma.classComponent.findMany({
       where: { startTime: null },
-      include: { courseOffering: { include: { course: true } } }
+      include: { 
+        courseOffering: { 
+          include: { 
+            course: true,
+            cohort: true // 👈 NEW: We must pull the cohort so we can get their headcount!
+          } 
+        } 
+      }
     });
 
     if (classes.length === 0) {
       return { message: 'All classes are already scheduled! Nothing to do.' };
     }
 
-    // 2. Format the payload to perfectly match Python's Pydantic models
+    // 2. Format the payload to perfectly match Python's advanced Pydantic models
     const payload = {
       rooms: rooms.map(r => ({
         id: r.id,
         name: r.name,
         capacity: r.capacity,
-        roomType: r.roomType
+        roomType: r.roomType,
+        campusId: r.floor.building.campusId, // 👈 NEW: For Campus Travel Times
+        buildingId: r.floor.building.id      // 👈 NEW: For Campus Travel Times
       })),
       professors: professors.map(p => ({
         id: p.id,
         name: p.name,
         maxHoursPerWeek: p.maxHoursPerWeek,
-        timePreference: p.timePreference // 👈 NEW: Send the preference to Python!
+        timePreference: p.timePreference 
       })),
       classes: classes.map(c => ({
         id: c.id,
@@ -47,7 +65,8 @@ export class SchedulerService {
         durationMinutes: c.durationMinutes,
         requiresRoomType: c.requiresRoomType,
         professorId: c.assignedProfessorId || null,
-        cohortId: c.courseOffering.cohortId // 👈 Keeps cohorts separated!
+        cohortId: c.courseOffering.cohortId,
+        cohortHeadcount: c.courseOffering.cohort.headcount // 👈 NEW: To ensure they fit in the room!
       }))
     };
 
@@ -84,7 +103,7 @@ export class SchedulerService {
 
       return { 
         success: true, 
-        message: `Successfully scheduled ${savedCount} classes, respecting professor time preferences!` 
+        message: `Successfully scheduled ${savedCount} classes with all enterprise constraints applied!` 
       };
 
     } catch (error: any) {

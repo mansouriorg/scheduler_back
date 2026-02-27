@@ -38,7 +38,8 @@ export class SchedulerService {
       professors: professors.map(p => ({
         id: p.id,
         name: p.name,
-        maxHoursPerWeek: p.maxHoursPerWeek
+        maxHoursPerWeek: p.maxHoursPerWeek,
+        timePreference: p.timePreference // 👈 NEW: Send the preference to Python!
       })),
       classes: classes.map(c => ({
         id: c.id,
@@ -46,7 +47,7 @@ export class SchedulerService {
         durationMinutes: c.durationMinutes,
         requiresRoomType: c.requiresRoomType,
         professorId: c.assignedProfessorId || null,
-        cohortId: c.courseOffering.cohortId // 👈 NEW: Sending the student group to the AI!
+        cohortId: c.courseOffering.cohortId // 👈 Keeps cohorts separated!
       }))
     };
 
@@ -83,7 +84,7 @@ export class SchedulerService {
 
       return { 
         success: true, 
-        message: `Successfully scheduled ${savedCount} classes into physical rooms without any cohort clashes!` 
+        message: `Successfully scheduled ${savedCount} classes, respecting professor time preferences!` 
       };
 
     } catch (error: any) {

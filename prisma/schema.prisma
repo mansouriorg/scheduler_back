@@ -15,6 +15,12 @@ datasource db {
   provider = "postgresql"
 }
 
+
+
+// ------------------------------------------------------
+// 1. ENUMS
+// ------------------------------------------------------
+
 enum DayOfWeek {
   MONDAY
   TUESDAY
@@ -150,6 +156,7 @@ model Cohort {
   currentSemester TermType
   
   courseOfferings CourseOffering[]
+  students        Student[]        // 👈 NEW: A cohort is now made up of individual students
 }
 
 model Term {
@@ -207,6 +214,7 @@ model CourseOffering {
   cohort   Cohort           @relation(fields: [cohortId], references: [id], onDelete: Cascade)
   
   classes  ClassComponent[]
+  enrollments Enrollment[]  // 👈 NEW: Links individual students to this specific offering
 }
 
 model ClassComponent {
@@ -233,4 +241,36 @@ model ClassComponent {
   startTime           String?        // "HH:mm" e.g., "08:30"
   endTime             String?        // "HH:mm" e.g., "10:00"
   isRecurringWeekly   Boolean        @default(true)
+}
+
+// ------------------------------------------------------
+// 7. CROSS-COHORT ENROLLMENTS (Tier 3 Final Boss)
+// ------------------------------------------------------
+
+model Student {
+  id        String   @id @default(uuid())
+  firstName String
+  lastName  String
+  email     String   @unique
+  
+  // They still belong to a primary major/year (e.g., "MED - Y1")
+  cohortId  String
+  cohort    Cohort   @relation(fields: [cohortId], references: [id])
+
+  // BUT now they can individually enroll in any class!
+  enrollments Enrollment[]
+}
+
+// This is the "Cross-Cohort" magic link. 
+// A Med student and a CS student can both have an Enrollment pointing to the same CourseOffering
+model Enrollment {
+  id               String         @id @default(uuid())
+  
+  studentId        String
+  student          Student        @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  courseOfferingId String
+  courseOffering   CourseOffering @relation(fields: [courseOfferingId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseOfferingId]) // A student can only enroll in a course once
 }

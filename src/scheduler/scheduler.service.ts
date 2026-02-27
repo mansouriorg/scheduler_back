@@ -13,18 +13,23 @@ export class SchedulerService {
   async autoGenerate() {
     console.log('🚀 Gathering data for the Python Brain...');
     
-    // 1. Fetch resources from PostgreSQL with deeper geographic relations
+    // 1. Fetch resources from PostgreSQL with geographic and unavailability data
     const rooms = await this.prisma.room.findMany({
       include: {
         floor: {
           include: {
-            building: true // 👈 NEW: Allows us to see which campus the room belongs to
+            building: true 
           }
         }
       }
     });
     
-    const professors = await this.prisma.professor.findMany();
+    // Fetch professors along with their specific days off
+    const professors = await this.prisma.professor.findMany({
+      include: {
+        unavailability: true 
+      }
+    });
     
     // Fetch ONLY classes that haven't been scheduled yet!
     const classes = await this.prisma.classComponent.findMany({
@@ -33,7 +38,11 @@ export class SchedulerService {
         courseOffering: { 
           include: { 
             course: true,
-            cohort: true // 👈 NEW: We must pull the cohort so we can get their headcount!
+            cohort: true,
+            // Fetch every individual student enrolled in this specific offering
+            enrollments: { 
+              select: { studentId: true } 
+            }
           } 
         } 
       }
@@ -43,39 +52,46 @@ export class SchedulerService {
       return { message: 'All classes are already scheduled! Nothing to do.' };
     }
 
-    // 2. Format the payload to perfectly match Python's advanced Pydantic models
+    // 2. Format the payload to perfectly match Python's ultimate Pydantic models
     const payload = {
       rooms: rooms.map(r => ({
         id: r.id,
         name: r.name,
         capacity: r.capacity,
         roomType: r.roomType,
-        campusId: r.floor.building.campusId, // 👈 NEW: For Campus Travel Times
-        buildingId: r.floor.building.id      // 👈 NEW: For Campus Travel Times
+        campusId: r.floor.building.campusId, 
+        buildingId: r.floor.building.id,      
+        equipment: r.equipment || [] 
       })),
       professors: professors.map(p => ({
         id: p.id,
         name: p.name,
         maxHoursPerWeek: p.maxHoursPerWeek,
-        timePreference: p.timePreference 
+        timePreference: p.timePreference,
+        unavailableDays: p.unavailability?.map(u => u.dayOfWeek) || [] 
       })),
       classes: classes.map(c => ({
         id: c.id,
         courseCode: c.courseOffering.course.code,
         durationMinutes: c.durationMinutes,
         requiresRoomType: c.requiresRoomType,
+        requiredEquipment: c.requiredEquipment || [], 
+        componentType: c.type,                        
         professorId: c.assignedProfessorId || null,
         cohortId: c.courseOffering.cohortId,
-        cohortHeadcount: c.courseOffering.cohort.headcount // 👈 NEW: To ensure they fit in the room!
+        // 🚨 FIXED: Send the ACTUAL physical number of enrolled students!
+        cohortHeadcount: c.courseOffering.enrollments.length,
+        studentIds: c.courseOffering.enrollments.map(e => e.studentId) 
       }))
     };
 
     // 3. Send the puzzle to Python!
     try {
-      console.log(`🧠 Sending ${payload.classes.length} classes to Python...`);
+      console.log(`🧠 Sending ${payload.classes.length} classes to Python. Checking individual student conflicts...`);
       
       const response = await firstValueFrom(
-        this.httpService.post('http://127.0.0.1:8000/solve', payload)
+        // Generous timeout for massive Tier 3 calculations
+        this.httpService.post('http://127.0.0.1:8000/solve', payload, { timeout: 300000 })
       );
 
       const result = response.data;
@@ -103,7 +119,7 @@ export class SchedulerService {
 
       return { 
         success: true, 
-        message: `Successfully scheduled ${savedCount} classes with all enterprise constraints applied!` 
+        message: `Successfully scheduled ${savedCount} classes checking thousands of individual student conflicts!` 
       };
 
     } catch (error: any) {

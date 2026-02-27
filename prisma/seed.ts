@@ -19,10 +19,12 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter } as any);
 
 async function main() {
-  console.log('🌱 Starting 4X MEGA database seeding with REALISTIC courses & EXPANDED data...');
+  console.log('🌱 Starting TIER 3 MEGA database seeding with Cross-Cohort Enrollments...');
 
-  // 1. CLEANUP
+  // 1. CLEANUP (Added Enrollment & Student to the wipe list!)
   console.log('🧹 Cleaning existing data...');
+  await prisma.enrollment.deleteMany();
+  await prisma.student.deleteMany();
   await prisma.classComponent.deleteMany();
   await prisma.courseOffering.deleteMany();
   await prisma.courseComponentTemplate.deleteMany();
@@ -123,10 +125,9 @@ async function main() {
     }
   }
 
-  // 🚨 ALL ROOMS UPGRADED TO 100 CAPACITY TO FIT MAX COHORTS
   const classBldgs = ['ENG', 'CSH', 'BUS', 'LAW', 'MED', 'NUR', 'ART', 'LIT', 'EDU', 'RES', 'PHA', 'ARC'];
   for (const bldg of classBldgs) {
-    for (let i = 101; i <= 120; i++) { // Increased to 20 classrooms per building to handle expanded data
+    for (let i = 101; i <= 120; i++) {
       roomData.push({ name: `${bldg}-${i}`, capacity: 100, roomType: RoomType.CLASSROOM, equipment: [Equipment.WHITEBOARD, Equipment.PROJECTOR], floorId: getFloor(bldg, '1') });
     }
   }
@@ -147,7 +148,7 @@ async function main() {
 
   await prisma.room.createMany({ data: roomData });
 
-  // 4. PROFESSORS (Increased from 120 to 150)
+  // 4. PROFESSORS
   console.log('👨‍🏫 Seeding 150 Professors...');
   const profData: any[] = [];
   const departments = ['Computer Science', 'Mathematics', 'Physics', 'Software Engineering', 'Business', 'Law', 'Fine Arts', 'Medicine', 'Nursing', 'Literature', 'Education', 'History', 'Pharmacy', 'Architecture'];
@@ -167,7 +168,7 @@ async function main() {
   const fall26 = await prisma.term.create({ data: { name: 'Fall 2026', type: TermType.SEMESTER_1, startDate: new Date('2026-09-01T00:00:00Z'), endDate: new Date('2026-12-20T00:00:00Z') } });
   await prisma.term.create({ data: { name: 'Spring 2027', type: TermType.SEMESTER_2, startDate: new Date('2027-01-10T00:00:00Z'), endDate: new Date('2027-05-15T00:00:00Z') } });
 
-  // 6. COHORTS (Added ARC and PHA)
+  // 6. COHORTS
   console.log('👥 Seeding 100+ Student Cohorts...');
   const cohortPrefixes = ['SWE', 'CS', 'IT', 'BUS', 'FIN', 'LAW', 'MED', 'NUR', 'ART', 'LIT', 'EDU', 'HIS', 'MCH', 'EE', 'PSY', 'SOC', 'ARC', 'PHA'];
   const cohortData: any[] = [];
@@ -182,15 +183,17 @@ async function main() {
     cohortData.push({ name: `${prefix} - Y4`, hc: 75 });
   }
 
+  // Creating a master cohort for University-Wide Electives
+  cohortData.push({ name: `UNI - Open Electives`, hc: 500 });
+
   const createdCohorts: any = {};
   for (const c of cohortData) {
     createdCohorts[c.name] = await prisma.cohort.create({ data: { name: c.name, headcount: c.hc, currentSemester: TermType.SEMESTER_1 } });
   }
 
-  // 7. COURSES (REALISTIC 130+ Course Blueprints)
+  // 7. COURSES 
   console.log('📘 Seeding Realistic Course Blueprints...');
   const courseTemplates: any[] = [
-    // Core Base Courses
     { code: 'CS101', title: 'Intro to Programming', hrs: 60, comps: [{ t: ComponentType.LECTURE, rt: RoomType.AMPHI, h: 30, s: 1.5, eq: [Equipment.PROJECTOR] }, { t: ComponentType.TP, rt: RoomType.COMPUTER_LAB, h: 30, s: 1.5, eq: [Equipment.COMPUTERS] }] },
     { code: 'MTH101', title: 'Calculus I', hrs: 60, comps: [{ t: ComponentType.LECTURE, rt: RoomType.AMPHI, h: 30, s: 1.5, eq: [] }, { t: ComponentType.TD, rt: RoomType.CLASSROOM, h: 30, s: 1.5, eq: [Equipment.WHITEBOARD] }] },
   ];
@@ -214,10 +217,9 @@ async function main() {
     { code: 'SOC201', title: 'Sociological Theory' }, { code: 'SOC202', title: 'Social Inequality' }, { code: 'SOC301', title: 'Criminology' }, { code: 'SOC302', title: 'Urban Sociology' }, { code: 'SOC401', title: 'Globalization & Society' },
     { code: 'EE201', title: 'Circuit Analysis' }, { code: 'EE202', title: 'Digital Logic Design' }, { code: 'EE301', title: 'Signals and Systems' }, { code: 'EE302', title: 'Electromagnetics' }, { code: 'EE401', title: 'Control Systems' }, { code: 'EE402', title: 'Power Electronics' },
     { code: 'MCH201', title: 'Statics & Dynamics' }, { code: 'MCH202', title: 'Thermodynamics' }, { code: 'MCH301', title: 'Fluid Mechanics' }, { code: 'MCH302', title: 'Materials Science' }, { code: 'MCH401', title: 'Robotics & Automation' }, { code: 'MCH402', title: 'Heat Transfer' },
-    // NEW ARCHITECTURE COURSES
     { code: 'ARC201', title: 'Architectural Design Fundamentals' }, { code: 'ARC202', title: 'History of Architecture' }, { code: 'ARC301', title: 'Urban Planning' }, { code: 'ARC302', title: 'Sustainable Building Design' }, { code: 'ARC401', title: 'Building Structures' }, { code: 'ARC402', title: 'Landscape Architecture' },
-    // NEW PHARMACY COURSES
     { code: 'PHA201', title: 'Pharmaceutics I' }, { code: 'PHA202', title: 'Organic Chemistry for Pharmacy' }, { code: 'PHA301', title: 'Medicinal Chemistry' }, { code: 'PHA302', title: 'Pharmacokinetics' }, { code: 'PHA401', title: 'Clinical Pharmacy' }, { code: 'PHA402', title: 'Toxicology' },
+    { code: 'UNI101', title: 'University Life & Success' }, { code: 'UNI201', title: 'Entrepreneurship Bootcamp' }
   ];
 
   for (const c of realisticCourses) {
@@ -247,7 +249,7 @@ async function main() {
     });
   }
 
-  // 8. COURSE OFFERINGS (Intelligent assignments based on Major)
+  // 8. COURSE OFFERINGS 
   console.log('⚙️ Generating Domain-Specific Course Offerings...');
   
   const assignCourse = async (courseCode: string, cohortName: string) => {
@@ -255,7 +257,7 @@ async function main() {
     const cohort = createdCohorts[cohortName];
     if (!course || !cohort) return;
 
-    await prisma.courseOffering.create({
+    return await prisma.courseOffering.create({
       data: {
         termId: fall26.id, courseId: course.id, cohortId: cohort.id,
         classes: {
@@ -271,23 +273,20 @@ async function main() {
     });
   };
 
-  // We loop through ALL created cohorts and assign them courses based on their major!
   for (const cohortName of Object.keys(createdCohorts)) {
-    // Extract the major prefix from the cohort name (e.g., "MED" from "MED - Y1 Grp A")
+    if (cohortName === 'UNI - Open Electives') continue; 
+
     const majorPrefix = cohortName.split(' - ')[0];
 
-    // Give fundamental courses only to relevant majors
     if (['SWE', 'CS', 'IT', 'EE'].includes(majorPrefix)) {
-      await assignCourse('CS101', cohortName); // Tech gets programming
-      await assignCourse('MTH101', cohortName); // Tech gets math
+      await assignCourse('CS101', cohortName); 
+      await assignCourse('MTH101', cohortName); 
     } else if (['BUS', 'FIN', 'MKT', 'ARC'].includes(majorPrefix)) {
-      await assignCourse('MTH101', cohortName); // Business & Arch get math
+      await assignCourse('MTH101', cohortName); 
     }
 
-    // Now, find all courses in our realistic catalog that perfectly match this cohort's major!
     const domainSpecificCourses = realisticCourses.filter(c => c.code.startsWith(majorPrefix));
     
-    // Assign up to 5 major-specific courses to this cohort
     let assignedCount = 0;
     for (const course of domainSpecificCourses) {
       if (assignedCount >= 5) break; 
@@ -296,7 +295,84 @@ async function main() {
     }
   }
 
-  console.log('✅✅✅ 4X MEGA Database Seeding Complete! Have fun building the Calendar!');
+  // Assign Universal Electives to the special Open Electives cohort
+  await assignCourse('UNI101', 'UNI - Open Electives');
+  await assignCourse('UNI201', 'UNI - Open Electives');
+  await assignCourse('PSY201', 'UNI - Open Electives'); 
+
+  // ------------------------------------------------------
+  // 9. STUDENT GENERATION (Tier 3 Setup)
+  // ------------------------------------------------------
+  console.log('🧑‍🎓 Generating 5,000+ Individual Students...');
+  
+  // 🚨 FIXED: Typed the array to allow pushing objects!
+  const studentsToCreate: any[] = [];
+  let studentCounter = 1;
+
+  for (const [cohortName, cohort] of Object.entries(createdCohorts)) {
+    if (cohortName === 'UNI - Open Electives') continue; 
+
+    for (let i = 0; i < (cohort as any).headcount; i++) {
+      studentsToCreate.push({
+        firstName: `Student${studentCounter}`,
+        lastName: `Major_${cohortName.split(' - ')[0]}`,
+        email: `student${studentCounter}@university.edu`,
+        cohortId: (cohort as any).id
+      });
+      studentCounter++;
+    }
+  }
+
+  const chunkSize = 5000;
+  for (let i = 0; i < studentsToCreate.length; i += chunkSize) {
+    await prisma.student.createMany({
+      data: studentsToCreate.slice(i, i + chunkSize)
+    });
+  }
+  
+  const allStudents = await prisma.student.findMany();
+  console.log(`✅ Generated ${allStudents.length} students successfully.`);
+
+  // ------------------------------------------------------
+  // 10. ENROLLMENTS (The Cross-Cohort Matrix!)
+  // ------------------------------------------------------
+  console.log('📝 Creating standard and cross-cohort Enrollments...');
+  const allOfferings = await prisma.courseOffering.findMany();
+  const enrollmentsToCreate: any[] = [];
+
+  for (const offering of allOfferings) {
+    const cohortStudents = allStudents.filter(s => s.cohortId === offering.cohortId);
+    for (const student of cohortStudents) {
+      enrollmentsToCreate.push({
+        studentId: student.id,
+        courseOfferingId: offering.id
+      });
+    }
+  }
+
+  const electiveCohort = createdCohorts['UNI - Open Electives'];
+  const electiveOfferings = allOfferings.filter(o => o.cohortId === electiveCohort.id);
+
+  for (const electiveOffering of electiveOfferings) {
+    const randomStudents = [...allStudents].sort(() => 0.5 - Math.random()).slice(0, 50);
+    
+    for (const student of randomStudents) {
+      if (!enrollmentsToCreate.some(e => e.studentId === student.id && e.courseOfferingId === electiveOffering.id)) {
+        enrollmentsToCreate.push({
+          studentId: student.id,
+          courseOfferingId: electiveOffering.id
+        });
+      }
+    }
+  }
+
+  for (let i = 0; i < enrollmentsToCreate.length; i += chunkSize) {
+    await prisma.enrollment.createMany({
+      data: enrollmentsToCreate.slice(i, i + chunkSize)
+    });
+  }
+
+  console.log('✅✅✅ MEGA Database Seeding with Tier 3 Matrix Complete! Your AI is going to sweat!');
 }
 
 main()

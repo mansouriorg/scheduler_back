@@ -1,0 +1,236 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+  moduleFormat  = "cjs"
+
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+}
+
+enum TermType {
+  SEMESTER_1
+  SEMESTER_2
+  SUMMER
+}
+
+enum RoomType {
+  AMPHI
+  CLASSROOM
+  COMPUTER_LAB
+  WORKSHOP
+  CHEMISTRY_LAB
+}
+
+enum ComponentType {
+  LECTURE
+  TD
+  TP
+}
+
+enum Equipment {
+  COMPUTERS
+  MAC_COMPUTERS
+  PROJECTOR
+  CHEMISTRY_HOOD
+  WHITEBOARD
+  SMARTBOARD
+}
+
+enum TimePreference {
+  MORNING
+  AFTERNOON
+  EVENING
+  NO_PREFERENCE
+}
+
+// ------------------------------------------------------
+// 2. GLOBAL SETTINGS
+// ------------------------------------------------------
+
+model GlobalScheduleSettings {
+  id                         String @id @default(uuid())
+  universityOpenTime         String // e.g., "08:00"
+  universityCloseTime        String // e.g., "18:00"
+  lunchBreakStartTime        String // e.g., "12:00"
+  lunchBreakEndTime          String // e.g., "13:00"
+  defaultRoomTurnaroundMins  Int    // e.g., 15
+  maxConsecutiveStudentHours Int    // e.g., 4
+}
+
+// ------------------------------------------------------
+// 3. LOCATION HIERARCHY
+// ------------------------------------------------------
+
+model Campus {
+  id        String     @id @default(uuid())
+  name      String     // e.g., "Main Campus"
+  buildings Building[]
+}
+
+model Building {
+  id       String  @id @default(uuid())
+  name     String  // e.g., "Science & Tech Building"
+  code     String  // e.g., "STB"
+  
+  campusId String
+  campus   Campus  @relation(fields: [campusId], references: [id], onDelete: Cascade)
+  
+  floors   Floor[]
+}
+
+model Floor {
+  id         String   @id @default(uuid())
+  level      String   // e.g., "1", "Ground", "Basement"
+  
+  buildingId String
+  building   Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  
+  rooms      Room[]
+}
+
+model Room {
+  id              String           @id @default(uuid())
+  name            String           // e.g., "Room 101"
+  capacity        Int
+  roomType        RoomType
+  equipment       Equipment[]      // Requires PostgreSQL
+  
+  floorId         String
+  floor           Floor            @relation(fields: [floorId], references: [id], onDelete: Cascade)
+  
+  classComponents ClassComponent[]
+}
+
+// ------------------------------------------------------
+// 4. PEOPLE & RESOURCES
+// ------------------------------------------------------
+
+model Professor {
+  id              String                    @id @default(uuid())
+  name            String
+  department      String
+  maxHoursPerWeek Float
+  timePreference  TimePreference            @default(NO_PREFERENCE)
+  
+  unavailability  ProfessorUnavailability[]
+  classes         ClassComponent[]
+}
+
+model ProfessorUnavailability {
+  id          String    @id @default(uuid())
+  dayOfWeek   DayOfWeek
+  startTime   String    // "HH:mm"
+  endTime     String    // "HH:mm"
+  
+  professorId String
+  professor   Professor @relation(fields: [professorId], references: [id], onDelete: Cascade)
+}
+
+model Cohort {
+  id              String           @id @default(uuid())
+  name            String           // e.g., "Software Engineering - Year 1 - Group A"
+  headcount       Int
+  currentSemester TermType
+  
+  courseOfferings CourseOffering[]
+}
+
+model Term {
+  id              String           @id @default(uuid())
+  name            String           // e.g., "Fall 2026"
+  type            TermType
+  startDate       DateTime
+  endDate         DateTime
+  
+  courseOfferings CourseOffering[]
+}
+
+// ------------------------------------------------------
+// 5. MASTER CATALOG (The Blueprints)
+// ------------------------------------------------------
+
+model Course {
+  id                 String                    @id @default(uuid())
+  code               String                    @unique // e.g., "DEV-101"
+  title              String
+  totalHours         Float
+  offeredInTerms     TermType[]                // Requires PostgreSQL
+  
+  componentsTemplate CourseComponentTemplate[]
+  offerings          CourseOffering[]
+}
+
+model CourseComponentTemplate {
+  id                  String         @id @default(uuid())
+  type                ComponentType
+  totalComponentHours Float
+  hoursPerSession     Float
+  requiresRoomType    RoomType
+  requiredEquipment   Equipment[]    // Requires PostgreSQL
+  mustFollowType      ComponentType? // Pedagogical ordering
+  
+  courseId            String
+  course              Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------------------------------
+// 6. SCHEDULING EXECUTION (The Calendar Data)
+// ------------------------------------------------------
+
+model CourseOffering {
+  id       String           @id @default(uuid())
+  
+  termId   String
+  term     Term             @relation(fields: [termId], references: [id], onDelete: Cascade)
+  
+  courseId String
+  course   Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  cohortId String
+  cohort   Cohort           @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  
+  classes  ClassComponent[]
+}
+
+model ClassComponent {
+  id                  String         @id @default(uuid())
+  type                ComponentType
+  durationMinutes     Int
+  requiresRoomType    RoomType
+  requiredEquipment   Equipment[]    // Requires PostgreSQL
+  mustFollowType      ComponentType? 
+  
+  // Link to the overarching Course/Term/Cohort
+  courseOfferingId    String
+  courseOffering      CourseOffering @relation(fields: [courseOfferingId], references: [id], onDelete: Cascade)
+  
+  // These are populated during the drag-and-drop scheduling process
+  assignedProfessorId String?
+  professor           Professor?     @relation(fields: [assignedProfessorId], references: [id])
+  
+  assignedRoomId      String?
+  room                Room?          @relation(fields: [assignedRoomId], references: [id])
+  
+  // The actual scheduled time slot
+  dayOfWeek           DayOfWeek?
+  startTime           String?        // "HH:mm" e.g., "08:30"
+  endTime             String?        // "HH:mm" e.g., "10:00"
+  isRecurringWeekly   Boolean        @default(true)
+}

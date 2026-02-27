@@ -10,9 +10,11 @@ import { CampusesModule } from './campuses/campuses.module';
 import { BuildingsModule } from './buildings/buildings.module';
 import { FloorsModule } from './floors/floors.module';
 import { CourseOfferingsModule } from './course-offerings/course-offerings.module';
+import { CoursesModule } from './courses/courses.module';
+import { SchedulerModule } from './scheduler/scheduler.module';
 
 @Module({
-  imports: [PrismaModule, ProfessorsModule, RoomsModule, CohortsModule, TermsModule, CampusesModule, BuildingsModule, FloorsModule, CourseOfferingsModule],
+  imports: [PrismaModule, ProfessorsModule, RoomsModule, CohortsModule, TermsModule, CampusesModule, BuildingsModule, FloorsModule, CourseOfferingsModule, CoursesModule, SchedulerModule],
   controllers: [AppController],
   providers: [AppService],
 })

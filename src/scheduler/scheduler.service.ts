@@ -79,7 +79,7 @@ export class SchedulerService {
         componentType: c.type,                        
         professorId: c.assignedProfessorId || null,
         cohortId: c.courseOffering.cohortId,
-        // 🚨 FIXED: Send the ACTUAL physical number of enrolled students!
+        // Send the ACTUAL physical number of enrolled students!
         cohortHeadcount: c.courseOffering.enrollments.length,
         studentIds: c.courseOffering.enrollments.map(e => e.studentId) 
       }))
@@ -90,8 +90,8 @@ export class SchedulerService {
       console.log(`🧠 Sending ${payload.classes.length} classes to Python. Checking individual student conflicts...`);
       
       const response = await firstValueFrom(
-        // Generous timeout for massive Tier 3 calculations
-        this.httpService.post('http://127.0.0.1:8000/solve', payload, { timeout: 300000 })
+        // 🚨 WIDENED THE PIPE: 10 minutes (600,000ms) to account for matrix building time!
+        this.httpService.post('http://127.0.0.1:8000/solve', payload, { timeout: 0 })
       );
 
       const result = response.data;

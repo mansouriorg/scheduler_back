@@ -303,9 +303,8 @@ async function main() {
   // ------------------------------------------------------
   // 9. STUDENT GENERATION (Tier 3 Setup)
   // ------------------------------------------------------
-  console.log('🧑‍🎓 Generating 5,000+ Individual Students...');
+  console.log('🧑‍🎓 Generating Individual Students...');
   
-  // 🚨 FIXED: Typed the array to allow pushing objects!
   const studentsToCreate: any[] = [];
   let studentCounter = 1;
 

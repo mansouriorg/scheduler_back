@@ -28,6 +28,10 @@ export class CreateCourseDto {
   @IsString()
   title: string;
 
+  // 🚨 THE FIX: Adding the credits property so NestJS knows to expect it from the frontend!
+  @IsNumber()
+  credits: number;
+
   @IsNumber()
   totalHours: number;
 

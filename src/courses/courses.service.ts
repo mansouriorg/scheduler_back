@@ -11,6 +11,7 @@ export class CoursesService {
       data: {
         code: createCourseDto.code,
         title: createCourseDto.title,
+        credits: createCourseDto.credits, // 🚨 THE FIX: This maps the missing credits field!
         totalHours: createCourseDto.totalHours,
         offeredInTerms: createCourseDto.offeredInTerms,
         // This automatically saves the nested array of components to PostgreSQL!

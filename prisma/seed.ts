@@ -15,7 +15,7 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter } as any);
 
 async function main() {
-  console.log('🌱 Starting ENTERPRISE TIER 3: Credits, Dynamic Durations (1H/2H/3H), & Strict Professors...');
+  console.log('🌱 Starting ENTERPRISE TIER 3: Massive Faculty Expansion & 75% Load Balancing...');
 
   // 1. CLEANUP
   console.log('🧹 Cleaning existing data...');
@@ -86,17 +86,16 @@ async function main() {
     await prisma.room.createMany({ data: roomData });
   }
 
-  // 4. PROFESSORS (Adding the Strict Monday Professor!)
-  console.log('👨‍🏫 Seeding Professors (Including Dr. Strict Monday)...');
+  // 4. MASSIVE PROFESSOR EXPANSION
+  console.log('👨‍🏫 Seeding 300 Faculty Members to provide AI breathing room...');
   
-  // Create Dr. Strict Monday
-  const strictProf = await prisma.professor.create({
+  await prisma.professor.create({
     data: {
       name: 'Dr. Strict Monday',
       department: 'Specialized Faculty',
       maxHoursPerWeek: 12, 
       timePreference: TimePreference.NO_PREFERENCE,
-      isStrictTimeRequirement: true, // 🚨 Tells AI to ignore fatigue and cram classes!
+      isStrictTimeRequirement: true, 
       unavailability: {
         create: [
           { dayOfWeek: DayOfWeek.TUESDAY, startTime: '08:00', endTime: '20:00' },
@@ -110,15 +109,29 @@ async function main() {
   });
 
   const profData: any[] = [];
-  for (let i = 1; i <= 99; i++) {
+  
+  // 150 Core Faculty (Max 40 hours)
+  for (let i = 1; i <= 150; i++) {
     profData.push({
-      name: `Dr. Faculty Staff ${i}`,
+      name: `Dr. Core Faculty ${i}`,
       department: 'University Faculty',
-      maxHoursPerWeek: 45, 
+      maxHoursPerWeek: 40, 
       timePreference: TimePreference.NO_PREFERENCE,
       isStrictTimeRequirement: false
     });
   }
+
+  // 150 Adjunct / Relief Faculty (Max 15 hours - Just here to take 1 or 2 classes!)
+  for (let i = 1; i <= 150; i++) {
+    profData.push({
+      name: `Adjunct Relief ${i}`,
+      department: 'Support Staff',
+      maxHoursPerWeek: 15, 
+      timePreference: TimePreference.NO_PREFERENCE,
+      isStrictTimeRequirement: false
+    });
+  }
+  
   await prisma.professor.createMany({ data: profData });
   const allProfs = await prisma.professor.findMany();
 
@@ -144,32 +157,28 @@ async function main() {
     createdCohorts[c.name] = await prisma.cohort.create({ data: { name: c.name, headcount: c.hc, currentSemester: TermType.SEMESTER_1 } });
   }
 
-  // 7. COURSES (With Exact Credits and Dynamic Durations!)
+  // 7. COURSES 
   console.log('📘 Seeding Course Catalog with dynamic durations (1H, 1.5H, 2H, 3H)...');
   
   const curriculumData = [
-    // Y1 S1
     { name: 'Calculus I', credits: 4, type: 'STANDARD' },
     { name: 'Algebra', credits: 3, type: 'STANDARD' },
-    { name: 'Intro to Programming', credits: 4, type: 'CUSTOM_2H_2H' }, // 🚨 2H Lec + 2H TD
+    { name: 'Intro to Programming', credits: 4, type: 'CUSTOM_2H_2H' }, 
     { name: 'Digital Logic', credits: 3, type: 'STANDARD' },
-    { name: 'Physics I', credits: 4, type: 'CUSTOM_1H_3H' }, // 🚨 1H Lec + 3H Lab
+    { name: 'Physics I', credits: 4, type: 'CUSTOM_1H_3H' }, 
     { name: 'Chemistry I', credits: 3, type: 'SCIENCE' },
-    // Y1 S2
     { name: 'Calculus II', credits: 4, type: 'STANDARD' },
     { name: 'Discrete Math', credits: 3, type: 'STANDARD' },
     { name: 'Data Structures', credits: 4, type: 'CUSTOM_2H_2H' },
     { name: 'Web Dev', credits: 3, type: 'STANDARD' },
     { name: 'Physics II', credits: 4, type: 'CUSTOM_1H_3H' },
     { name: 'Chemistry II', credits: 3, type: 'SCIENCE' },
-    // Y2 S1
     { name: 'Databases', credits: 4, type: 'STANDARD' },
     { name: 'OS', credits: 4, type: 'STANDARD' },
     { name: 'Computer Architecture', credits: 3, type: 'STANDARD' },
     { name: 'Microecon', credits: 3, type: 'STANDARD' },
     { name: 'Marketing', credits: 3, type: 'STANDARD' },
     { name: 'Statistics', credits: 4, type: 'STANDARD' },
-    // Y2 S2
     { name: 'Networks', credits: 4, type: 'STANDARD' },
     { name: 'Security', credits: 4, type: 'STANDARD' },
     { name: 'Agile Project Mgmt', credits: 3, type: 'STANDARD' },
@@ -184,7 +193,6 @@ async function main() {
     const cData = curriculumData[i];
     const comps: any[] = [];
 
-    // 🚨 DYNAMIC DURATIONS APPLIED HERE
     if (cData.type === 'CUSTOM_2H_2H') {
       comps.push({ type: ComponentType.LECTURE, requiresRoomType: RoomType.CLASSROOM, totalComponentHours: 30, hoursPerSession: 2.0, requiredEquipment: [Equipment.WHITEBOARD] });
       comps.push({ type: ComponentType.TD, requiresRoomType: RoomType.COMPUTER_LAB, totalComponentHours: 30, hoursPerSession: 2.0, requiredEquipment: [Equipment.COMPUTERS] });
@@ -199,7 +207,7 @@ async function main() {
       if (cData.type === 'SCIENCE') comps.push({ type: ComponentType.TP, requiresRoomType: RoomType.CHEMISTRY_LAB, totalComponentHours: 15, hoursPerSession: 1.5, requiredEquipment: [] });
       else comps.push({ type: ComponentType.TD, requiresRoomType: RoomType.COMPUTER_LAB, totalComponentHours: 15, hoursPerSession: 1.5, requiredEquipment: [Equipment.COMPUTERS] });
     } 
-    else { // Standard 3 Credits
+    else { 
       comps.push({ type: ComponentType.LECTURE, requiresRoomType: RoomType.CLASSROOM, totalComponentHours: 30, hoursPerSession: 1.5, requiredEquipment: [Equipment.WHITEBOARD] });
       if (cData.type === 'SCIENCE') comps.push({ type: ComponentType.TP, requiresRoomType: RoomType.CHEMISTRY_LAB, totalComponentHours: 15, hoursPerSession: 1.5, requiredEquipment: [] });
       else comps.push({ type: ComponentType.TD, requiresRoomType: RoomType.COMPUTER_LAB, totalComponentHours: 15, hoursPerSession: 1.5, requiredEquipment: [Equipment.COMPUTERS] });
@@ -209,7 +217,7 @@ async function main() {
       data: {
         code: `CRS${100 + i}`, 
         title: cData.name, 
-        credits: cData.credits, // 🚨 Explicitly saving credits!
+        credits: cData.credits, 
         totalHours: comps.reduce((sum, c) => sum + c.totalComponentHours, 0), 
         offeredInTerms: [TermType.SEMESTER_1, TermType.SEMESTER_2],
         componentsTemplate: { create: comps }
@@ -218,8 +226,8 @@ async function main() {
     });
   }
 
-  // 8. FIXED CURRICULUM + DYNAMIC PROFESSOR ALGORITHM
-  console.log('⚙️ Assigning Fixed Curriculums: 12 Courses/Year...');
+  // 8. 75% LOAD BALANCING ALGORITHM
+  console.log('⚙️ Assigning Fixed Curriculums with a 75% Load Target limit...');
   
   const profHoursTracker: Record<string, Record<string, number>> = { [fall26.id]: {}, [spring27.id]: {} };
   const courseProfGroupCount: Record<string, Record<string, Record<string, number>>> = { [fall26.id]: {}, [spring27.id]: {} };
@@ -232,18 +240,21 @@ async function main() {
   function assignProfessorToGroup(termId: string, courseId: string, requiredHours: number): string {
     if (!courseProfGroupCount[termId][courseId]) courseProfGroupCount[termId][courseId] = {};
     
+    // 🚨 THE FIX: Force the AI to leave 25% of the professor's schedule completely empty!
+    const MAX_LOAD_FACTOR = 0.75; 
+
     const existingProfIds = Object.keys(courseProfGroupCount[termId][courseId]);
     for (const pId of existingProfIds) {
       const p = allProfs.find(prof => prof.id === pId)!;
-      if (courseProfGroupCount[termId][courseId][pId] < 4 && (profHoursTracker[termId][pId] + requiredHours) <= p.maxHoursPerWeek) {
+      if (courseProfGroupCount[termId][courseId][pId] < 4 && (profHoursTracker[termId][pId] + requiredHours) <= (p.maxHoursPerWeek * MAX_LOAD_FACTOR)) {
         courseProfGroupCount[termId][courseId][pId]++;
         profHoursTracker[termId][pId] += requiredHours;
         return pId;
       }
     }
 
-    const availableProfs = allProfs.filter(p => (profHoursTracker[termId][p.id] + requiredHours) <= p.maxHoursPerWeek);
-    if (availableProfs.length === 0) throw new Error(`Ran out of Professor hours in Term ${termId}!`);
+    const availableProfs = allProfs.filter(p => (profHoursTracker[termId][p.id] + requiredHours) <= (p.maxHoursPerWeek * MAX_LOAD_FACTOR));
+    if (availableProfs.length === 0) throw new Error(`Ran out of Professor hours in Term ${termId} even with 300 staff!`);
 
     const randomProf = availableProfs[Math.floor(Math.random() * availableProfs.length)];
     courseProfGroupCount[termId][courseId][randomProf.id] = 1;
@@ -279,7 +290,7 @@ async function main() {
               classes: {
                 create: course.componentsTemplate.map((t: any) => ({
                   type: t.type, 
-                  durationMinutes: Math.round(t.hoursPerSession * 60), // 🚨 Translates 1.5H -> 90min, 3H -> 180min!
+                  durationMinutes: Math.round(t.hoursPerSession * 60), 
                   requiresRoomType: t.requiresRoomType, 
                   requiredEquipment: t.requiredEquipment, 
                   isRecurringWeekly: true,

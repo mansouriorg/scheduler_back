@@ -15,8 +15,6 @@ datasource db {
   provider = "postgresql"
 }
 
-
-
 // ------------------------------------------------------
 // 1. ENUMS
 // ------------------------------------------------------
@@ -129,14 +127,17 @@ model Room {
 // ------------------------------------------------------
 
 model Professor {
-  id              String                    @id @default(uuid())
-  name            String
-  department      String
-  maxHoursPerWeek Float
-  timePreference  TimePreference            @default(NO_PREFERENCE)
+  id                      String                    @id @default(uuid())
+  name                    String
+  department              String
+  maxHoursPerWeek         Float
+  timePreference          TimePreference            @default(NO_PREFERENCE)
   
-  unavailability  ProfessorUnavailability[]
-  classes         ClassComponent[]
+  // Tells the AI to ignore all fatigue rules for this professor so they can teach all day
+  isStrictTimeRequirement Boolean                   @default(false) 
+  
+  unavailability          ProfessorUnavailability[]
+  classes                 ClassComponent[]
 }
 
 model ProfessorUnavailability {
@@ -156,7 +157,7 @@ model Cohort {
   currentSemester TermType
   
   courseOfferings CourseOffering[]
-  students        Student[]        // 👈 NEW: A cohort is now made up of individual students
+  students        Student[]        // A cohort is now made up of individual students
 }
 
 model Term {
@@ -177,6 +178,10 @@ model Course {
   id                 String                    @id @default(uuid())
   code               String                    @unique // e.g., "DEV-101"
   title              String
+  
+  // 🚨 NEW: Explicitly tracks 3-Credit (3H) and 4-Credit (4H) logic
+  credits            Int                       
+  
   totalHours         Float
   offeredInTerms     TermType[]                // Requires PostgreSQL
   
@@ -188,7 +193,7 @@ model CourseComponentTemplate {
   id                  String         @id @default(uuid())
   type                ComponentType
   totalComponentHours Float
-  hoursPerSession     Float
+  hoursPerSession     Float          // 🚨 This will now hold values like 1.0, 1.5, 2.0, 3.0
   requiresRoomType    RoomType
   requiredEquipment   Equipment[]    // Requires PostgreSQL
   mustFollowType      ComponentType? // Pedagogical ordering
@@ -214,13 +219,16 @@ model CourseOffering {
   cohort   Cohort           @relation(fields: [cohortId], references: [id], onDelete: Cascade)
   
   classes  ClassComponent[]
-  enrollments Enrollment[]  // 👈 NEW: Links individual students to this specific offering
+  enrollments Enrollment[]  // Links individual students to this specific offering
 }
 
 model ClassComponent {
   id                  String         @id @default(uuid())
   type                ComponentType
-  durationMinutes     Int
+  
+  // 🚨 This maps directly to hoursPerSession (e.g. 60 min, 90 min, 120 min, 180 min)
+  durationMinutes     Int            
+  
   requiresRoomType    RoomType
   requiredEquipment   Equipment[]    // Requires PostgreSQL
   mustFollowType      ComponentType? 

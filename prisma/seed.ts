@@ -1,4 +1,4 @@
-import { PrismaClient, ComponentType, RoomType, Equipment, TermType, TimePreference } from '../generated/prisma/client';
+import { PrismaClient, ComponentType, RoomType, Equipment, TermType, TimePreference, DayOfWeek } from '../generated/prisma/client';
 import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as dotenv from 'dotenv';
@@ -15,7 +15,7 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter } as any);
 
 async function main() {
-  console.log('🌱 Starting ENTERPRISE TIER 3: Fixed Curriculums, Max 30 Students, Bi-Weekly Science Labs...');
+  console.log('🌱 Starting ENTERPRISE TIER 3: Credits, Dynamic Durations (1H/2H/3H), & Strict Professors...');
 
   // 1. CLEANUP
   console.log('🧹 Cleaning existing data...');
@@ -47,10 +47,8 @@ async function main() {
     },
   });
 
-  // 3. CAMPUSES, BUILDINGS, FLOORS, & ROOMS (Bulletproof linking)
-  console.log('🏢 Seeding Campuses, Buildings, and Perfectly Sized Rooms...');
-  
-  // Create Main Campus
+  // 3. CAMPUSES, BUILDINGS, & ROOMS
+  console.log('🏢 Seeding Campuses & Perfectly Sized Rooms...');
   const mainCampus = await prisma.campus.create({ data: { name: 'Main Campus' } });
 
   const bldgsToCreate = [
@@ -61,48 +59,64 @@ async function main() {
   ];
 
   for (const b of bldgsToCreate) {
-    // 1. Create Building
     const building = await prisma.building.create({
       data: { name: b.name, code: b.code, campusId: mainCampus.id }
     });
 
-    // 2. Create Ground Floor and 1st Floor for this exact building
     const groundFloor = await prisma.floor.create({ data: { level: 'Ground', buildingId: building.id } });
     const firstFloor = await prisma.floor.create({ data: { level: '1', buildingId: building.id } });
 
-    // 3. Attach Rooms directly to these exact Floor IDs
     const roomData: any[] = [];
     
-    // Standard Classrooms (Exactly 30 places) on Ground Floor
+    // Classrooms (30 places)
     for (let i = 101; i <= 115; i++) {
       roomData.push({ name: `${b.code}-${i} (Classroom)`, capacity: 30, roomType: RoomType.CLASSROOM, equipment: [Equipment.WHITEBOARD], floorId: groundFloor.id });
     }
-    
-    // Computer Labs (Exactly 30 places) on 1st Floor
+    // PC Labs (30 places)
     for (let i = 1; i <= 8; i++) {
       roomData.push({ name: `${b.code} PC Lab ${i}`, capacity: 30, roomType: RoomType.COMPUTER_LAB, equipment: [Equipment.COMPUTERS], floorId: firstFloor.id });
     }
-    
-    // 🚨 BI-WEEKLY SCIENCE LABS (Only in SCI and MED buildings)
+    // Bi-Weekly Science Labs
     if (b.code === 'SCI' || b.code === 'MED') {
       for (let i = 1; i <= 10; i++) {
         roomData.push({ name: `Chemistry Lab ${b.code}-${i} (BiWeekly)`, capacity: 30, roomType: RoomType.CHEMISTRY_LAB, equipment: [Equipment.CHEMISTRY_HOOD], floorId: groundFloor.id });
         roomData.push({ name: `Physics Lab ${b.code}-${i} (BiWeekly)`, capacity: 30, roomType: RoomType.CHEMISTRY_LAB, equipment: [], floorId: firstFloor.id });
       }
     }
-    
     await prisma.room.createMany({ data: roomData });
   }
 
-  // 4. PROFESSORS
-  console.log('👨‍🏫 Seeding 100 Polyvalent Professors...');
+  // 4. PROFESSORS (Adding the Strict Monday Professor!)
+  console.log('👨‍🏫 Seeding Professors (Including Dr. Strict Monday)...');
+  
+  // Create Dr. Strict Monday
+  const strictProf = await prisma.professor.create({
+    data: {
+      name: 'Dr. Strict Monday',
+      department: 'Specialized Faculty',
+      maxHoursPerWeek: 12, 
+      timePreference: TimePreference.NO_PREFERENCE,
+      isStrictTimeRequirement: true, // 🚨 Tells AI to ignore fatigue and cram classes!
+      unavailability: {
+        create: [
+          { dayOfWeek: DayOfWeek.TUESDAY, startTime: '08:00', endTime: '20:00' },
+          { dayOfWeek: DayOfWeek.WEDNESDAY, startTime: '08:00', endTime: '20:00' },
+          { dayOfWeek: DayOfWeek.THURSDAY, startTime: '08:00', endTime: '20:00' },
+          { dayOfWeek: DayOfWeek.FRIDAY, startTime: '08:00', endTime: '20:00' },
+          { dayOfWeek: DayOfWeek.SATURDAY, startTime: '08:00', endTime: '20:00' }
+        ]
+      }
+    }
+  });
+
   const profData: any[] = [];
-  for (let i = 1; i <= 100; i++) {
+  for (let i = 1; i <= 99; i++) {
     profData.push({
       name: `Dr. Faculty Staff ${i}`,
       department: 'University Faculty',
       maxHoursPerWeek: 45, 
-      timePreference: TimePreference.NO_PREFERENCE
+      timePreference: TimePreference.NO_PREFERENCE,
+      isStrictTimeRequirement: false
     });
   }
   await prisma.professor.createMany({ data: profData });
@@ -113,14 +127,13 @@ async function main() {
   const fall26 = await prisma.term.create({ data: { name: 'Fall 2026', type: TermType.SEMESTER_1, startDate: new Date('2026-09-01T00:00:00Z'), endDate: new Date('2026-12-20T00:00:00Z') } });
   const spring27 = await prisma.term.create({ data: { name: 'Spring 2027', type: TermType.SEMESTER_2, startDate: new Date('2027-01-10T00:00:00Z'), endDate: new Date('2027-05-15T00:00:00Z') } });
 
-  // 6. COHORTS (Strictly 30 Students per group to match room sizes!)
+  // 6. COHORTS
   console.log('👥 Seeding Strict 30-Student Cohorts (5 Groups per major)...');
   const cohortPrefixes = ['SWE', 'CS', 'BUS', 'MED', 'ENG'];
-  const groups = ['Grp 1', 'Grp 2', 'Grp 3', 'Grp 4', 'Grp 5'];
   const cohortData: any[] = [];
   
   for (const prefix of cohortPrefixes) {
-    for (const group of groups) {
+    for (const group of ['Grp 1', 'Grp 2', 'Grp 3', 'Grp 4', 'Grp 5']) {
       cohortData.push({ name: `${prefix} - Y1 ${group}`, hc: 30 });
       cohortData.push({ name: `${prefix} - Y2 ${group}`, hc: 30 });
     }
@@ -131,56 +144,82 @@ async function main() {
     createdCohorts[c.name] = await prisma.cohort.create({ data: { name: c.name, headcount: c.hc, currentSemester: TermType.SEMESTER_1 } });
   }
 
-  // 7. COURSES
-  console.log('📘 Seeding Course Catalog with specific Science Lab requirements...');
+  // 7. COURSES (With Exact Credits and Dynamic Durations!)
+  console.log('📘 Seeding Course Catalog with dynamic durations (1H, 1.5H, 2H, 3H)...');
   
-  const standardCourses = [
-    'Calculus I', 'Algebra', 'Intro to Programming', 'Digital Logic', 'Communication', 
-    'Calculus II', 'Discrete Math', 'Data Structures', 'Web Dev', 'Ethics',              
-    'Databases', 'OS', 'Computer Architecture', 'Microecon', 'Marketing', 'Statistics',                
-    'Networks', 'Security', 'Agile Project Mgmt', 'Macroecon', 'HR Mgmt', 'Finance'                    
-  ];
-
-  const scienceCourses = [
-    'Physics I', 'Chemistry I', 'Physics II', 'Chemistry II'
+  const curriculumData = [
+    // Y1 S1
+    { name: 'Calculus I', credits: 4, type: 'STANDARD' },
+    { name: 'Algebra', credits: 3, type: 'STANDARD' },
+    { name: 'Intro to Programming', credits: 4, type: 'CUSTOM_2H_2H' }, // 🚨 2H Lec + 2H TD
+    { name: 'Digital Logic', credits: 3, type: 'STANDARD' },
+    { name: 'Physics I', credits: 4, type: 'CUSTOM_1H_3H' }, // 🚨 1H Lec + 3H Lab
+    { name: 'Chemistry I', credits: 3, type: 'SCIENCE' },
+    // Y1 S2
+    { name: 'Calculus II', credits: 4, type: 'STANDARD' },
+    { name: 'Discrete Math', credits: 3, type: 'STANDARD' },
+    { name: 'Data Structures', credits: 4, type: 'CUSTOM_2H_2H' },
+    { name: 'Web Dev', credits: 3, type: 'STANDARD' },
+    { name: 'Physics II', credits: 4, type: 'CUSTOM_1H_3H' },
+    { name: 'Chemistry II', credits: 3, type: 'SCIENCE' },
+    // Y2 S1
+    { name: 'Databases', credits: 4, type: 'STANDARD' },
+    { name: 'OS', credits: 4, type: 'STANDARD' },
+    { name: 'Computer Architecture', credits: 3, type: 'STANDARD' },
+    { name: 'Microecon', credits: 3, type: 'STANDARD' },
+    { name: 'Marketing', credits: 3, type: 'STANDARD' },
+    { name: 'Statistics', credits: 4, type: 'STANDARD' },
+    // Y2 S2
+    { name: 'Networks', credits: 4, type: 'STANDARD' },
+    { name: 'Security', credits: 4, type: 'STANDARD' },
+    { name: 'Agile Project Mgmt', credits: 3, type: 'STANDARD' },
+    { name: 'Macroecon', credits: 3, type: 'STANDARD' },
+    { name: 'HR Mgmt', credits: 3, type: 'STANDARD' },
+    { name: 'Finance', credits: 4, type: 'STANDARD' }
   ];
 
   const createdCourses: Record<string, any> = {};
   
-  for (let i = 0; i < standardCourses.length; i++) {
-    const courseName = standardCourses[i];
-    createdCourses[courseName] = await prisma.course.create({
-      data: {
-        code: `CRS${100 + i}`, title: courseName, totalHours: 45, offeredInTerms: [TermType.SEMESTER_1, TermType.SEMESTER_2],
-        componentsTemplate: {
-          create: [
-            { type: ComponentType.LECTURE, requiresRoomType: RoomType.CLASSROOM, totalComponentHours: 30, hoursPerSession: 1.5, requiredEquipment: [Equipment.WHITEBOARD] },
-            { type: ComponentType.TD, requiresRoomType: RoomType.COMPUTER_LAB, totalComponentHours: 15, hoursPerSession: 1.5, requiredEquipment: [Equipment.COMPUTERS] }
-          ]
-        }
-      },
-      include: { componentsTemplate: true }
-    });
-  }
+  for (let i = 0; i < curriculumData.length; i++) {
+    const cData = curriculumData[i];
+    const comps: any[] = [];
 
-  for (let i = 0; i < scienceCourses.length; i++) {
-    const courseName = scienceCourses[i];
-    createdCourses[courseName] = await prisma.course.create({
+    // 🚨 DYNAMIC DURATIONS APPLIED HERE
+    if (cData.type === 'CUSTOM_2H_2H') {
+      comps.push({ type: ComponentType.LECTURE, requiresRoomType: RoomType.CLASSROOM, totalComponentHours: 30, hoursPerSession: 2.0, requiredEquipment: [Equipment.WHITEBOARD] });
+      comps.push({ type: ComponentType.TD, requiresRoomType: RoomType.COMPUTER_LAB, totalComponentHours: 30, hoursPerSession: 2.0, requiredEquipment: [Equipment.COMPUTERS] });
+    } 
+    else if (cData.type === 'CUSTOM_1H_3H') {
+      comps.push({ type: ComponentType.LECTURE, requiresRoomType: RoomType.CLASSROOM, totalComponentHours: 15, hoursPerSession: 1.0, requiredEquipment: [Equipment.WHITEBOARD] });
+      comps.push({ type: ComponentType.TP, requiresRoomType: RoomType.CHEMISTRY_LAB, totalComponentHours: 45, hoursPerSession: 3.0, requiredEquipment: [] });
+    } 
+    else if (cData.credits === 4) {
+      comps.push({ type: ComponentType.LECTURE, requiresRoomType: RoomType.CLASSROOM, totalComponentHours: 30, hoursPerSession: 1.5, requiredEquipment: [Equipment.WHITEBOARD] });
+      comps.push({ type: ComponentType.LECTURE, requiresRoomType: RoomType.CLASSROOM, totalComponentHours: 30, hoursPerSession: 1.5, requiredEquipment: [Equipment.WHITEBOARD] });
+      if (cData.type === 'SCIENCE') comps.push({ type: ComponentType.TP, requiresRoomType: RoomType.CHEMISTRY_LAB, totalComponentHours: 15, hoursPerSession: 1.5, requiredEquipment: [] });
+      else comps.push({ type: ComponentType.TD, requiresRoomType: RoomType.COMPUTER_LAB, totalComponentHours: 15, hoursPerSession: 1.5, requiredEquipment: [Equipment.COMPUTERS] });
+    } 
+    else { // Standard 3 Credits
+      comps.push({ type: ComponentType.LECTURE, requiresRoomType: RoomType.CLASSROOM, totalComponentHours: 30, hoursPerSession: 1.5, requiredEquipment: [Equipment.WHITEBOARD] });
+      if (cData.type === 'SCIENCE') comps.push({ type: ComponentType.TP, requiresRoomType: RoomType.CHEMISTRY_LAB, totalComponentHours: 15, hoursPerSession: 1.5, requiredEquipment: [] });
+      else comps.push({ type: ComponentType.TD, requiresRoomType: RoomType.COMPUTER_LAB, totalComponentHours: 15, hoursPerSession: 1.5, requiredEquipment: [Equipment.COMPUTERS] });
+    }
+
+    createdCourses[cData.name] = await prisma.course.create({
       data: {
-        code: `SCI${100 + i}`, title: courseName, totalHours: 45, offeredInTerms: [TermType.SEMESTER_1, TermType.SEMESTER_2],
-        componentsTemplate: {
-          create: [
-            { type: ComponentType.LECTURE, requiresRoomType: RoomType.CLASSROOM, totalComponentHours: 30, hoursPerSession: 1.5, requiredEquipment: [Equipment.WHITEBOARD] },
-            { type: ComponentType.TP, requiresRoomType: RoomType.CHEMISTRY_LAB, totalComponentHours: 15, hoursPerSession: 1.5, requiredEquipment: [] }
-          ]
-        }
+        code: `CRS${100 + i}`, 
+        title: cData.name, 
+        credits: cData.credits, // 🚨 Explicitly saving credits!
+        totalHours: comps.reduce((sum, c) => sum + c.totalComponentHours, 0), 
+        offeredInTerms: [TermType.SEMESTER_1, TermType.SEMESTER_2],
+        componentsTemplate: { create: comps }
       },
       include: { componentsTemplate: true }
     });
   }
 
   // 8. FIXED CURRICULUM + DYNAMIC PROFESSOR ALGORITHM
-  console.log('⚙️ Assigning Fixed Curriculums: 12 Courses/Year (6 per Semester)...');
+  console.log('⚙️ Assigning Fixed Curriculums: 12 Courses/Year...');
   
   const profHoursTracker: Record<string, Record<string, number>> = { [fall26.id]: {}, [spring27.id]: {} };
   const courseProfGroupCount: Record<string, Record<string, Record<string, number>>> = { [fall26.id]: {}, [spring27.id]: {} };
@@ -195,14 +234,15 @@ async function main() {
     
     const existingProfIds = Object.keys(courseProfGroupCount[termId][courseId]);
     for (const pId of existingProfIds) {
-      if (courseProfGroupCount[termId][courseId][pId] < 4 && (profHoursTracker[termId][pId] + requiredHours) <= 45) {
+      const p = allProfs.find(prof => prof.id === pId)!;
+      if (courseProfGroupCount[termId][courseId][pId] < 4 && (profHoursTracker[termId][pId] + requiredHours) <= p.maxHoursPerWeek) {
         courseProfGroupCount[termId][courseId][pId]++;
         profHoursTracker[termId][pId] += requiredHours;
         return pId;
       }
     }
 
-    const availableProfs = allProfs.filter(p => (profHoursTracker[termId][p.id] + requiredHours) <= 45);
+    const availableProfs = allProfs.filter(p => (profHoursTracker[termId][p.id] + requiredHours) <= p.maxHoursPerWeek);
     if (availableProfs.length === 0) throw new Error(`Ran out of Professor hours in Term ${termId}!`);
 
     const randomProf = availableProfs[Math.floor(Math.random() * availableProfs.length)];
@@ -238,7 +278,11 @@ async function main() {
               termId: fall26.id, courseId: course.id, cohortId: cohort.id,
               classes: {
                 create: course.componentsTemplate.map((t: any) => ({
-                  type: t.type, durationMinutes: t.hoursPerSession * 60, requiresRoomType: t.requiresRoomType, requiredEquipment: t.requiredEquipment, isRecurringWeekly: true,
+                  type: t.type, 
+                  durationMinutes: Math.round(t.hoursPerSession * 60), // 🚨 Translates 1.5H -> 90min, 3H -> 180min!
+                  requiresRoomType: t.requiresRoomType, 
+                  requiredEquipment: t.requiredEquipment, 
+                  isRecurringWeekly: true,
                   assignedProfessorId: assignedProfId
                 }))
               }
@@ -257,7 +301,11 @@ async function main() {
               termId: spring27.id, courseId: course.id, cohortId: cohort.id,
               classes: {
                 create: course.componentsTemplate.map((t: any) => ({
-                  type: t.type, durationMinutes: t.hoursPerSession * 60, requiresRoomType: t.requiresRoomType, requiredEquipment: t.requiredEquipment, isRecurringWeekly: true,
+                  type: t.type, 
+                  durationMinutes: Math.round(t.hoursPerSession * 60), 
+                  requiresRoomType: t.requiresRoomType, 
+                  requiredEquipment: t.requiredEquipment, 
+                  isRecurringWeekly: true,
                   assignedProfessorId: assignedProfId
                 }))
               }
@@ -269,7 +317,7 @@ async function main() {
   }
 
   // 9. STUDENT GENERATION 
-  console.log('🧑‍🎓 Generating Individual Students (Exactly 30 per cohort)...');
+  console.log('🧑‍🎓 Generating Individual Students...');
   const studentsToCreate: any[] = [];
   let studentCounter = 1;
 
@@ -292,7 +340,7 @@ async function main() {
   const allStudents = await prisma.student.findMany();
 
   // 10. ENROLLMENTS 
-  console.log('📝 Enrolling students in their full curriculum...');
+  console.log('📝 Enrolling students...');
   const allOfferings = await prisma.courseOffering.findMany();
   const enrollmentsToCreate: any[] = [];
 
@@ -307,7 +355,7 @@ async function main() {
     await prisma.enrollment.createMany({ data: enrollmentsToCreate.slice(i, i + chunkSize) });
   }
 
-  console.log('✅✅✅ Strict Curriculum, 30-Student Classes, and Bi-Weekly Lab Logic Applied!');
+  console.log('✅✅✅ Final Enterprise Seeding Complete! Ready for the AI to schedule.');
 }
 
 main()

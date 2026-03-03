@@ -31,7 +31,7 @@ export class SchedulerService {
       }
     });
     
-    // 🚨 THE FIX: Fetch ONLY classes for SEMESTER_1 that haven't been scheduled yet!
+    // 🚨 Fetch ONLY classes for SEMESTER_1 that haven't been scheduled yet!
     const classes = await this.prisma.classComponent.findMany({
       where: { 
         startTime: null,
@@ -75,6 +75,7 @@ export class SchedulerService {
         name: p.name,
         maxHoursPerWeek: p.maxHoursPerWeek,
         timePreference: p.timePreference,
+        isStrictTimeRequirement: p.isStrictTimeRequirement, // 🚨 NEW: Passing the bypass flag to Python!
         unavailableDays: p.unavailability?.map(u => u.dayOfWeek) || [] 
       })),
       classes: classes.map(c => ({

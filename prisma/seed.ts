@@ -3,7 +3,6 @@ import { Pool } from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as dotenv from 'dotenv';
 
-// 1. Load the environment variables so we get DATABASE_URL
 dotenv.config();
 
 const connectionString = process.env.DATABASE_URL;
@@ -11,17 +10,14 @@ if (!connectionString) {
   throw new Error('DATABASE_URL is missing. Please check your .env file.');
 }
 
-// 2. Set up the standard Postgres connection pool and Prisma adapter
 const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
-
-// 3. Pass the adapter into the PrismaClient!
 const prisma = new PrismaClient({ adapter } as any);
 
 async function main() {
   console.log('🌱 Starting ENTERPRISE TIER 3: Fixed Curriculums, Max 30 Students, Bi-Weekly Science Labs...');
 
-  // 1. CLEANUP (Added Enrollment & Student to the wipe list!)
+  // 1. CLEANUP
   console.log('🧹 Cleaning existing data...');
   await prisma.enrollment.deleteMany();
   await prisma.student.deleteMany();
@@ -40,11 +36,10 @@ async function main() {
   await prisma.globalScheduleSettings.deleteMany();
 
   // 2. GLOBAL SETTINGS
-  console.log('⚙️ Seeding Settings...');
   await prisma.globalScheduleSettings.create({
     data: {
       universityOpenTime: '08:00',
-      universityCloseTime: '20:00', 
+      universityCloseTime: '18:30', 
       lunchBreakStartTime: '12:00',
       lunchBreakEndTime: '13:00',
       defaultRoomTurnaroundMins: 15,
@@ -52,45 +47,52 @@ async function main() {
     },
   });
 
-  // 3. LOCATIONS
-  console.log('🏢 Seeding Campuses & Perfectly Sized Rooms...');
-  const campusesData = [
-    { name: 'North Tech Campus', buildings: [{ name: 'Engineering Block', code: 'ENG', floors: ['Ground', '1'] }, { name: 'Science Hub', code: 'SCI', floors: ['Ground', '1'] }] },
-    { name: 'South Downtown Campus', buildings: [{ name: 'Business Tower', code: 'BUS', floors: ['Ground'] }] },
-    { name: 'West Medical Campus', buildings: [{ name: 'Medical Sciences', code: 'MED', floors: ['Ground', '1'] }] },
+  // 3. CAMPUSES, BUILDINGS, FLOORS, & ROOMS (Bulletproof linking)
+  console.log('🏢 Seeding Campuses, Buildings, and Perfectly Sized Rooms...');
+  
+  // Create Main Campus
+  const mainCampus = await prisma.campus.create({ data: { name: 'Main Campus' } });
+
+  const bldgsToCreate = [
+    { name: 'Engineering Block', code: 'ENG' },
+    { name: 'Science Hub', code: 'SCI' },
+    { name: 'Business Tower', code: 'BUS' },
+    { name: 'Medical Sciences', code: 'MED' }
   ];
 
-  for (const campus of campusesData) {
-    await prisma.campus.create({
-      data: {
-        name: campus.name,
-        buildings: { create: campus.buildings.map(b => ({ name: b.name, code: b.code, floors: { create: b.floors.map(f => ({ level: f })) } })) }
-      }
+  for (const b of bldgsToCreate) {
+    // 1. Create Building
+    const building = await prisma.building.create({
+      data: { name: b.name, code: b.code, campusId: mainCampus.id }
     });
-  }
 
-  const allFloors = await prisma.floor.findMany({ include: { building: true } });
-  const getFloor = (bCode: string, level: string) => allFloors.find(f => f.building.code === bCode && f.level === level)!.id;
+    // 2. Create Ground Floor and 1st Floor for this exact building
+    const groundFloor = await prisma.floor.create({ data: { level: 'Ground', buildingId: building.id } });
+    const firstFloor = await prisma.floor.create({ data: { level: '1', buildingId: building.id } });
 
-  const roomData: any[] = [];
-  const standardBldgs = ['ENG', 'BUS', 'MED', 'SCI'];
-  
-  for (const bldg of standardBldgs) {
-    // Standard Classrooms (Exactly 30 places)
-    for (let i = 101; i <= 115; i++) roomData.push({ name: `${bldg}-${i} (Classroom)`, capacity: 30, roomType: RoomType.CLASSROOM, equipment: [Equipment.WHITEBOARD], floorId: getFloor(bldg, 'Ground') });
+    // 3. Attach Rooms directly to these exact Floor IDs
+    const roomData: any[] = [];
     
-    // Computer Labs (Exactly 30 places)
-    for (let i = 1; i <= 8; i++) roomData.push({ name: `${bldg} PC Lab ${i}`, capacity: 30, roomType: RoomType.COMPUTER_LAB, equipment: [Equipment.COMPUTERS], floorId: getFloor(bldg, '1') });
+    // Standard Classrooms (Exactly 30 places) on Ground Floor
+    for (let i = 101; i <= 115; i++) {
+      roomData.push({ name: `${b.code}-${i} (Classroom)`, capacity: 30, roomType: RoomType.CLASSROOM, equipment: [Equipment.WHITEBOARD], floorId: groundFloor.id });
+    }
     
-    // 🚨 BI-WEEKLY SCIENCE LABS: Physical seats = 15. System capacity = 30 to allow the alternating 30-person cohort to book the single time slot!
-    if (bldg === 'SCI' || bldg === 'MED') {
+    // Computer Labs (Exactly 30 places) on 1st Floor
+    for (let i = 1; i <= 8; i++) {
+      roomData.push({ name: `${b.code} PC Lab ${i}`, capacity: 30, roomType: RoomType.COMPUTER_LAB, equipment: [Equipment.COMPUTERS], floorId: firstFloor.id });
+    }
+    
+    // 🚨 BI-WEEKLY SCIENCE LABS (Only in SCI and MED buildings)
+    if (b.code === 'SCI' || b.code === 'MED') {
       for (let i = 1; i <= 10; i++) {
-        roomData.push({ name: `Chemistry Lab ${i} (15 Seats BiWeekly)`, capacity: 30, roomType: RoomType.CHEMISTRY_LAB, equipment: [Equipment.CHEMISTRY_HOOD], floorId: getFloor(bldg, 'Ground') });
-        roomData.push({ name: `Physics Lab ${i} (15 Seats BiWeekly)`, capacity: 30, roomType: RoomType.CHEMISTRY_LAB, equipment: [], floorId: getFloor(bldg, '1') });
+        roomData.push({ name: `Chemistry Lab ${b.code}-${i} (BiWeekly)`, capacity: 30, roomType: RoomType.CHEMISTRY_LAB, equipment: [Equipment.CHEMISTRY_HOOD], floorId: groundFloor.id });
+        roomData.push({ name: `Physics Lab ${b.code}-${i} (BiWeekly)`, capacity: 30, roomType: RoomType.CHEMISTRY_LAB, equipment: [], floorId: firstFloor.id });
       }
     }
+    
+    await prisma.room.createMany({ data: roomData });
   }
-  await prisma.room.createMany({ data: roomData });
 
   // 4. PROFESSORS
   console.log('👨‍🏫 Seeding 100 Polyvalent Professors...');
@@ -119,7 +121,6 @@ async function main() {
   
   for (const prefix of cohortPrefixes) {
     for (const group of groups) {
-      // 🚨 EXACTLY 30 STUDENTS
       cohortData.push({ name: `${prefix} - Y1 ${group}`, hc: 30 });
       cohortData.push({ name: `${prefix} - Y2 ${group}`, hc: 30 });
     }
@@ -130,7 +131,7 @@ async function main() {
     createdCohorts[c.name] = await prisma.cohort.create({ data: { name: c.name, headcount: c.hc, currentSemester: TermType.SEMESTER_1 } });
   }
 
-  // 7. COURSES (The Universal Catalog including Physics/Chem Labs)
+  // 7. COURSES
   console.log('📘 Seeding Course Catalog with specific Science Lab requirements...');
   
   const standardCourses = [
@@ -146,7 +147,6 @@ async function main() {
 
   const createdCourses: Record<string, any> = {};
   
-  // Standard Courses (Classroom + PC Lab)
   for (let i = 0; i < standardCourses.length; i++) {
     const courseName = standardCourses[i];
     createdCourses[courseName] = await prisma.course.create({
@@ -163,7 +163,6 @@ async function main() {
     });
   }
 
-  // Science Courses (Classroom + Bi-Weekly Science Lab)
   for (let i = 0; i < scienceCourses.length; i++) {
     const courseName = scienceCourses[i];
     createdCourses[courseName] = await prisma.course.create({
@@ -172,7 +171,6 @@ async function main() {
         componentsTemplate: {
           create: [
             { type: ComponentType.LECTURE, requiresRoomType: RoomType.CLASSROOM, totalComponentHours: 30, hoursPerSession: 1.5, requiredEquipment: [Equipment.WHITEBOARD] },
-            // 🚨 THIS COMPONENT targets the specific Science Labs
             { type: ComponentType.TP, requiresRoomType: RoomType.CHEMISTRY_LAB, totalComponentHours: 15, hoursPerSession: 1.5, requiredEquipment: [] }
           ]
         }
@@ -184,7 +182,6 @@ async function main() {
   // 8. FIXED CURRICULUM + DYNAMIC PROFESSOR ALGORITHM
   console.log('⚙️ Assigning Fixed Curriculums: 12 Courses/Year (6 per Semester)...');
   
-  // 🚨 FIXED: Types updated to 'string' to handle Prisma UUIDs/CUIDs properly
   const profHoursTracker: Record<string, Record<string, number>> = { [fall26.id]: {}, [spring27.id]: {} };
   const courseProfGroupCount: Record<string, Record<string, Record<string, number>>> = { [fall26.id]: {}, [spring27.id]: {} };
   
@@ -193,11 +190,9 @@ async function main() {
     profHoursTracker[spring27.id][p.id] = 0;
   });
 
-  // 🚨 FIXED: Function signature accepts 'string' types
   function assignProfessorToGroup(termId: string, courseId: string, requiredHours: number): string {
     if (!courseProfGroupCount[termId][courseId]) courseProfGroupCount[termId][courseId] = {};
     
-    // Try to find a teacher already teaching this course this term (but < 4 groups)
     const existingProfIds = Object.keys(courseProfGroupCount[termId][courseId]);
     for (const pId of existingProfIds) {
       if (courseProfGroupCount[termId][courseId][pId] < 4 && (profHoursTracker[termId][pId] + requiredHours) <= 45) {
@@ -207,7 +202,6 @@ async function main() {
       }
     }
 
-    // Otherwise, find a NEW Polyvalent Teacher for this term
     const availableProfs = allProfs.filter(p => (profHoursTracker[termId][p.id] + requiredHours) <= 45);
     if (availableProfs.length === 0) throw new Error(`Ran out of Professor hours in Term ${termId}!`);
 
@@ -218,7 +212,6 @@ async function main() {
     return randomProf.id;
   }
 
-  // Injecting the Science Labs into the exact curriculum blocks
   const CURRICULUM = {
     Y1_SEMESTER_1: ['Calculus I', 'Algebra', 'Intro to Programming', 'Digital Logic', 'Physics I', 'Chemistry I'],   
     Y1_SEMESTER_2: ['Calculus II', 'Discrete Math', 'Data Structures', 'Web Dev', 'Physics II', 'Chemistry II'],  

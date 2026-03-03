@@ -11,7 +11,7 @@ export class SchedulerService {
   ) {}
 
   async autoGenerate() {
-    console.log('🚀 Gathering data for the Python Brain...');
+    console.log('🚀 Gathering data for the Python Brain (Semester 1 Only)...');
     
     // 1. Fetch resources from PostgreSQL with geographic and unavailability data
     const rooms = await this.prisma.room.findMany({
@@ -31,9 +31,16 @@ export class SchedulerService {
       }
     });
     
-    // Fetch ONLY classes that haven't been scheduled yet!
+    // 🚨 THE FIX: Fetch ONLY classes for SEMESTER_1 that haven't been scheduled yet!
     const classes = await this.prisma.classComponent.findMany({
-      where: { startTime: null },
+      where: { 
+        startTime: null,
+        courseOffering: {
+          term: {
+            type: 'SEMESTER_1' // We only schedule one semester at a time!
+          }
+        }
+      },
       include: { 
         courseOffering: { 
           include: { 
@@ -49,7 +56,7 @@ export class SchedulerService {
     });
 
     if (classes.length === 0) {
-      return { message: 'All classes are already scheduled! Nothing to do.' };
+      return { message: 'All Semester 1 classes are already scheduled! Nothing to do.' };
     }
 
     // 2. Format the payload to perfectly match Python's ultimate Pydantic models
@@ -89,8 +96,8 @@ export class SchedulerService {
     try {
       console.log(`🧠 Sending ${payload.classes.length} classes to Python. Checking individual student conflicts...`);
       
+      // 🚨 INFINITE TIMEOUT: 0 means NestJS will never hang up, allowing Python the full 20 minutes to optimize!
       const response = await firstValueFrom(
-        // 🚨 WIDENED THE PIPE: 10 minutes (600,000ms) to account for matrix building time!
         this.httpService.post('http://127.0.0.1:8000/solve', payload, { timeout: 0 })
       );
 

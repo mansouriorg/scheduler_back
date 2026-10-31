@@ -2,6 +2,12 @@ import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import {
+  describeSolverFailure,
+  solverEndpoint,
+  solverTimeoutMs,
+  type SolverAnswer,
+} from './solver';
 
 @Injectable()
 export class SchedulerService {
@@ -94,36 +100,54 @@ export class SchedulerService {
     };
 
     // 3. Send the puzzle to Python!
+    // Where scheduler-brain is and how long to wait for it (see .env.example).
+    const solverUrl = solverEndpoint(process.env.SOLVER_URL);
+    const timeoutMs = solverTimeoutMs(process.env.SOLVER_TIMEOUT_SECONDS);
     try {
       console.log(`🧠 Sending ${payload.classes.length} classes to Python. Checking individual student conflicts...`);
       
-      // 🚨 INFINITE TIMEOUT: 0 means NestJS will never hang up, allowing Python the full 20 minutes to optimize!
+      // 🚨 TIME LIMIT: waits up to SOLVER_TIMEOUT_SECONDS (default 30 minutes, 0 = no limit) for Python to optimize!
       const response = await firstValueFrom(
-        this.httpService.post('http://127.0.0.1:8000/solve', payload, { timeout: 0 })
+        this.httpService.post<SolverAnswer>(solverUrl, payload, {
+          timeout: timeoutMs,
+        }),
       );
 
       const result = response.data;
 
       if (!result.success) {
-        throw new HttpException(result.message, HttpStatus.BAD_REQUEST);
+        throw new HttpException(
+          result.message || 'scheduler-brain found no possible timetable.',
+          HttpStatus.BAD_REQUEST,
+        );
       }
 
       // 4. The puzzle is solved! Save the times and rooms back to PostgreSQL
       console.log('✅ Brain returned a valid schedule. Saving to database...');
       
-      let savedCount = 0;
-      for (const scheduledClass of result.scheduledClasses) {
-        await this.prisma.classComponent.update({
+      // One update per class, all run in a single transaction: either every
+      // class gets its room and time, or (if one save fails) none of them does.
+      const updates = result.scheduledClasses.map((scheduledClass) =>
+        this.prisma.classComponent.update({
           where: { id: scheduledClass.classId },
           data: {
             assignedRoomId: scheduledClass.roomId,
             dayOfWeek: scheduledClass.dayOfWeek,
             startTime: scheduledClass.startTime,
-            endTime: scheduledClass.endTime
-          }
-        });
-        savedCount++;
+            endTime: scheduledClass.endTime,
+          },
+        }),
+      );
+      try {
+        await this.prisma.$transaction(updates);
+      } catch (saveError) {
+        console.error('Saving the timetable failed:', saveError);
+        throw new HttpException(
+          'Could not save the timetable, so no class was changed. The brain_server terminal shows the details.',
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
+      const savedCount = updates.length;
 
       return { 
         success: true, 
@@ -131,11 +155,14 @@ export class SchedulerService {
       };
 
     } catch (error: any) {
-      console.error('Brain connection failed:', error?.response?.data || error.message);
-      throw new HttpException(
-        'Failed to communicate with Python Brain or constraints were impossible.', 
-        HttpStatus.INTERNAL_SERVER_ERROR
-      );
+      // "No timetable is possible" (thrown above) already carries the solver's
+      // own reason: pass it on as it is instead of hiding it.
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      console.error('Timetable generation failed:', error?.response?.data || error.message);
+      // Say what went wrong: solver not running, too slow, or answering with an error.
+      throw describeSolverFailure(error, solverUrl, timeoutMs);
     }
   }
 }

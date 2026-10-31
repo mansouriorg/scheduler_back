@@ -1,18 +1,20 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from './prisma.service';
 
 describe('PrismaService', () => {
-  let service: PrismaService;
+  // The address that prisma.service.ts read from .env, put back after each test.
+  const savedUrl = process.env.DATABASE_URL;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [PrismaService],
-    }).compile();
-
-    service = module.get<PrismaService>(PrismaService);
+  afterEach(() => {
+    if (savedUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = savedUrl;
+    }
   });
 
-  it('should be defined', () => {
-    expect(service).toBeDefined();
+  it('stops with a clear message when DATABASE_URL is missing', () => {
+    delete process.env.DATABASE_URL;
+
+    expect(() => new PrismaService()).toThrow('DATABASE_URL is undefined');
   });
 });

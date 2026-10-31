@@ -6,10 +6,14 @@ describe('TermsController', () => {
   let controller: TermsController;
 
   beforeEach(async () => {
+    // Anything the classes need that is not listed here (such as PrismaService)
+    // gets an empty stand-in from useMocker, so no database is used.
     const module: TestingModule = await Test.createTestingModule({
       controllers: [TermsController],
       providers: [TermsService],
-    }).compile();
+    })
+      .useMocker(() => ({}))
+      .compile();
 
     controller = module.get<TermsController>(TermsController);
   });

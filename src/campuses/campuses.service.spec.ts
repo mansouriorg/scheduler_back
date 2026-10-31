@@ -5,9 +5,13 @@ describe('CampusesService', () => {
   let service: CampusesService;
 
   beforeEach(async () => {
+    // Anything the class needs that is not listed here (such as PrismaService)
+    // gets an empty stand-in from useMocker, so no database is used.
     const module: TestingModule = await Test.createTestingModule({
       providers: [CampusesService],
-    }).compile();
+    })
+      .useMocker(() => ({}))
+      .compile();
 
     service = module.get<CampusesService>(CampusesService);
   });

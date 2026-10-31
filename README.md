@@ -1,98 +1,103 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# brain_server
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+The API of the university scheduler, built with NestJS 11 and Prisma 7 on PostgreSQL.
+It stores campuses, buildings, floors, rooms, professors, cohorts, terms, courses and
+course offerings. To build a timetable it sends this data to scheduler-brain (the
+Python solver) and saves the answer.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Requirements
 
-## Description
+- Node.js and pnpm (developed with Node.js 24.19 and pnpm 10.17)
+- PostgreSQL
+- scheduler-brain running, for timetable generation
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Setup
 
-## Project setup
+Run these once, inside this folder:
 
-```bash
-$ pnpm install
-```
+    pnpm install
+    cp .env.example .env
+    pnpm prisma generate
+    pnpm prisma migrate deploy
 
-## Compile and run the project
+- Edit `.env` after copying it: at least `DATABASE_URL`.
+- `prisma generate` writes the database client to `generated/prisma`.
+- `prisma migrate deploy` creates the tables from `prisma/migrations`.
 
-```bash
-# development
-$ pnpm run start
+## Run
 
-# watch mode
-$ pnpm run start:dev
+    pnpm start:dev
 
-# production mode
-$ pnpm run start:prod
-```
+The API listens on http://localhost:3001 (or on `PORT`) and reloads on every change.
 
-## Run tests
+## Settings (.env)
 
-```bash
-# unit tests
-$ pnpm run test
+| Name                     | Meaning                                                        | Default                 |
+|--------------------------|----------------------------------------------------------------|-------------------------|
+| `DATABASE_URL`           | PostgreSQL connection string                                   | none, required          |
+| `PORT`                   | port of this API                                               | `3001`                  |
+| `CORS_ORIGIN`            | web addresses allowed to call the API, separated by commas     | `http://localhost:3000` |
+| `SOLVER_URL`             | address of scheduler-brain; timetables are sent to `.../solve` | `http://127.0.0.1:8000` |
+| `SOLVER_TIMEOUT_SECONDS` | how long to wait for scheduler-brain; `0` means no limit       | `1800` (30 minutes)     |
 
-# e2e tests
-$ pnpm run test:e2e
+Example for a deployed web app plus local development:
 
-# test coverage
-$ pnpm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+    CORS_ORIGIN=http://localhost:3000,https://admin.example.edu
 
 ## Resources
 
-Check out a few resources that may come in handy when working with NestJS:
+Each folder in `src/` holds one resource with its controller, service and DTOs:
+`campuses`, `buildings`, `floors`, `rooms`, `professors`, `cohorts`, `terms`,
+`courses`, `course-offerings`.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+`PATCH /professors/:id` changes the fields that are sent, and
+`DELETE /professors/:id` deletes a teacher. A delete is refused (409, with the
+reason) while classes are assigned to the teacher, so no class loses its teacher.
 
-## Support
+`POST /scheduler/generate` builds the timetable through scheduler-brain. When it
+cannot, the answer says why, and the web app shows that message:
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+- 400: no timetable is possible; the message is scheduler-brain's own reason.
+- 502: scheduler-brain answered with an error; its terminal shows the details.
+- 503: scheduler-brain cannot be reached at `SOLVER_URL`.
+- 504: scheduler-brain did not answer within `SOLVER_TIMEOUT_SECONDS`.
+- 500: anything else, for example a failed save.
 
-## Stay in touch
+The timetable is saved in one database transaction: if saving fails, no class
+is changed.
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+The data model is in `prisma/schema.prisma`.
 
-## License
+## Scripts
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+| Command                   | What it does                                  |
+|---------------------------|-----------------------------------------------|
+| `pnpm start:dev`          | run the API and reload on change              |
+| `pnpm build`              | compile to `dist/`                            |
+| `pnpm test`               | unit tests (Jest, files ending in `.spec.ts`) |
+| `pnpm exec jest NAME`     | only the tests whose file name contains NAME  |
+| `pnpm test:e2e`           | end-to-end tests; they need the database      |
+| `pnpm lint`               | ESLint; note that it also fixes files         |
+| `pnpm format`             | Prettier; rewrites the files in `src/`        |
+
+## Tests
+
+`pnpm test` runs the unit tests in `src/`. They need neither the database nor
+scheduler-brain: PrismaService and the call to scheduler-brain are replaced by
+stand-ins.
+
+- `src/scheduler/scheduler.service.spec.ts`: timetable generation (which classes
+  are picked, the data sent to scheduler-brain, how its answer is saved in one
+  transaction, its reason when no timetable is possible, and the errors when it
+  cannot be reached or saving fails).
+- `src/scheduler/solver.spec.ts`: the `SOLVER_URL` and `SOLVER_TIMEOUT_SECONDS`
+  settings, and the error messages listed under Resources.
+- `src/professors/professors.service.spec.ts`: changing and deleting teachers.
+- `src/prisma/prisma.service.spec.ts`: the message when `DATABASE_URL` is missing.
+- `src/cors-origins.spec.ts`: reading `CORS_ORIGIN`.
+- The other files, made by the Nest generator, check little more than that each
+  controller and service can be created.
+
+The Jest settings are in `package.json` (`"jest"`) and `test/jest-e2e.json`.
+`moduleNameMapper` lets Jest load the Prisma client from `generated/prisma`, and
+`test/jest-setup.ts` keeps dotenv from printing a line in every test file.

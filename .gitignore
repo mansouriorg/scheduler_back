@@ -42,6 +42,9 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+# Backups made by the update commands
+.update-backup/
+
 # temp directory
 .temp
 .tmp

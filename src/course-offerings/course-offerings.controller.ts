@@ -48,6 +48,13 @@ export class CourseOfferingsController {
     return this.courseOfferingsService.assignTeachers(id, assignTeachersDto);
   }
 
+  // DELETE /course-offerings/:id/timetable takes the classes of one offering
+  // out of the timetable (their room, day and time); Generate places them again.
+  @Delete(':id/timetable')
+  clearTimetable(@Param('id') id: string) {
+    return this.courseOfferingsService.clearTimetable(id);
+  }
+
   // DELETE /course-offerings/:id deletes an offering with its classes; it is
   // refused (409) while students are enrolled.
   @Delete(':id')

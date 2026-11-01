@@ -122,6 +122,10 @@ teach more hours a week there than their maximum.
 `DELETE /course-offerings/:id` deletes an offering together with its classes. It is
 refused (409, with the reason) while students are enrolled, because their enrollment
 would be lost and the app cannot enroll students yet.
+`DELETE /course-offerings/:id/timetable` takes only the classes of that offering out of
+the timetable (their room, day and time; 404 when the offering does not exist). The
+classes, their teachers and the offering stay, and generating the timetable places them
+again around the other classes. The answer has `cleared` (how many) and a `message`.
 
 `PATCH /course-offerings/:id/teachers` sets the teacher of some classes, for example
 `{ "classes": [{ "classId": "...", "professorId": "..." }] }` (null: no teacher). The
@@ -215,7 +219,8 @@ stand-ins.
 - `src/terms/terms.service.spec.ts`: changing and deleting terms.
 - `src/courses/courses.service.spec.ts`: changing and deleting courses.
 - `src/course-offerings/course-offerings.service.spec.ts`: adding, moving and
-  deleting course offerings, and choosing the teachers of their classes.
+  deleting course offerings, taking their classes out of the timetable, and choosing
+  the teachers of their classes.
 - `src/common/teacher-fit.spec.ts`: the weekly hours of a teacher (for a new
   class, and in each term) and whether they are free at the time of a class.
 - `src/prisma/prisma.service.spec.ts`: the message when `DATABASE_URL` is missing.

@@ -128,7 +128,11 @@ type PrismaStandIn = {
     delete: jest.Mock;
   };
   professor: { findMany: jest.Mock };
-  classComponent: { findMany: jest.Mock; update: jest.Mock };
+  classComponent: {
+    findMany: jest.Mock;
+    update: jest.Mock;
+    updateMany: jest.Mock;
+  };
   $transaction: jest.Mock;
 };
 
@@ -156,6 +160,7 @@ describe('CourseOfferingsService', () => {
       classComponent: {
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn().mockReturnValue('one update'),
+        updateMany: jest.fn().mockResolvedValue({ count: 3 }),
       },
       $transaction: jest.fn().mockResolvedValue([]),
     };
@@ -603,6 +608,66 @@ describe('CourseOfferingsService', () => {
         service.assignTeachers('gone', { classes: [] }),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('clearTimetable', () => {
+    it('takes the classes of the offering out of the timetable, and only them', async () => {
+      const result = await service.clearTimetable('offering-1');
+
+      expect(prisma.courseOffering.findUnique).toHaveBeenCalledWith({
+        where: { id: 'offering-1' },
+        include: {
+          term: { select: { name: true } },
+          course: { select: { code: true } },
+          cohort: { select: { name: true } },
+        },
+      });
+      expect(prisma.classComponent.updateMany).toHaveBeenCalledWith({
+        where: {
+          courseOfferingId: 'offering-1',
+          OR: [
+            { assignedRoomId: { not: null } },
+            { dayOfWeek: { not: null } },
+            { startTime: { not: null } },
+            { endTime: { not: null } },
+          ],
+        },
+        data: {
+          assignedRoomId: null,
+          dayOfWeek: null,
+          startTime: null,
+          endTime: null,
+        },
+      });
+      expect(result).toEqual({
+        cleared: 3,
+        message:
+          'The 3 classes of DEV-101 for SE - Year 1 in Fall 2026 were taken out of the timetable. Generate the timetable to place them again.',
+      });
+    });
+
+    it('says "The class" for one, and says so when none is in the timetable', async () => {
+      prisma.classComponent.updateMany.mockResolvedValueOnce({ count: 1 });
+      expect((await service.clearTimetable('offering-1')).message).toBe(
+        'The class of DEV-101 for SE - Year 1 in Fall 2026 was taken out of the timetable. Generate the timetable to place it again.',
+      );
+
+      prisma.classComponent.updateMany.mockResolvedValueOnce({ count: 0 });
+      expect(await service.clearTimetable('offering-1')).toEqual({
+        cleared: 0,
+        message:
+          'DEV-101 for SE - Year 1 in Fall 2026 has no class in the timetable.',
+      });
+    });
+
+    it('answers 404, and changes nothing, for an offering that does not exist', async () => {
+      prisma.courseOffering.findUnique.mockResolvedValue(null);
+
+      await expect(service.clearTimetable('gone')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.classComponent.updateMany).not.toHaveBeenCalled();
     });
   });
 

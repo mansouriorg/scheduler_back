@@ -247,6 +247,48 @@ export class CourseOfferingsService {
     return { changed: changes.length };
   }
 
+  // Takes the room, day and time off the classes of one offering, so that the
+  // next generation places them again around the other classes. The classes,
+  // their teachers and the offering stay. 404 when the offering does not exist.
+  async clearTimetable(id: string) {
+    const offering = await this.prisma.courseOffering.findUnique({
+      where: { id },
+      include: NAMES,
+    });
+    if (offering === null) {
+      throw new NotFoundException(OFFERING_NOT_FOUND);
+    }
+    const { count } = await this.prisma.classComponent.updateMany({
+      where: {
+        courseOfferingId: id,
+        OR: [
+          { assignedRoomId: { not: null } },
+          { dayOfWeek: { not: null } },
+          { startTime: { not: null } },
+          { endTime: { not: null } },
+        ],
+      },
+      data: {
+        assignedRoomId: null,
+        dayOfWeek: null,
+        startTime: null,
+        endTime: null,
+      },
+    });
+    const name = describeOffering(offering);
+    const taken =
+      count === 1
+        ? `The class of ${name} was`
+        : `The ${count} classes of ${name} were`;
+    return {
+      cleared: count,
+      message:
+        count === 0
+          ? `${name} has no class in the timetable.`
+          : `${taken} taken out of the timetable. Generate the timetable to place ${count === 1 ? 'it' : 'them'} again.`,
+    };
+  }
+
   // Deletes an offering together with its classes, which leave the timetable.
   // It is refused (409) while students are enrolled: their enrollment would be
   // lost, and the app cannot enroll students yet.

@@ -1,7 +1,7 @@
 import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { Test, TestingModule } from '@nestjs/testing';
-import { AxiosError } from 'axios';
+import { AxiosError, AxiosResponse } from 'axios';
 import { of, throwError } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { SchedulerService } from './scheduler.service';
@@ -581,6 +581,24 @@ describe('SchedulerService', () => {
     );
     expect(prisma.classComponent.update).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('prints the answer of scheduler-brain in the terminal when it answers with an error', async () => {
+    const printed = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const failure = new AxiosError('Request failed', 'ERR_BAD_RESPONSE');
+    failure.response = {
+      status: 500,
+      data: { detail: 'The solver stopped.' },
+    } as AxiosResponse;
+    http.post.mockReturnValue(throwError(() => failure));
+
+    await service.autoGenerate('term-1').catch(() => undefined);
+
+    expect(printed).toHaveBeenCalledWith('Timetable generation failed:', {
+      detail: 'The solver stopped.',
+    });
   });
 
   describe('clearTimetable', () => {

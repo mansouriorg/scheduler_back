@@ -10,6 +10,7 @@ import { firstValueFrom } from 'rxjs';
 import {
   describeSolverFailure,
   solverEndpoint,
+  solverErrorDetail,
   solverTimeoutMs,
   type SolverAnswer,
 } from './solver';
@@ -31,43 +32,43 @@ export class SchedulerService {
   async autoGenerate(termId: string) {
     const term = await this.findTerm(termId);
     console.log('🚀 Gathering data for the Python Brain (one term)...');
-    
+
     // 1. Fetch resources from PostgreSQL with geographic and unavailability data
     const rooms = await this.prisma.room.findMany({
       include: {
         floor: {
           include: {
-            building: true 
-          }
-        }
-      }
+            building: true,
+          },
+        },
+      },
     });
-    
+
     // Fetch professors along with their specific days off
     const professors = await this.prisma.professor.findMany({
       include: {
-        unavailability: true 
-      }
+        unavailability: true,
+      },
     });
-    
+
     // 🚨 Fetch ONLY the classes of the chosen term that haven't been scheduled yet!
     const classes = await this.prisma.classComponent.findMany({
-      where: { 
+      where: {
         startTime: null,
         courseOffering: { termId: term.id },
       },
-      include: { 
-        courseOffering: { 
-          include: { 
+      include: {
+        courseOffering: {
+          include: {
             course: true,
             cohort: true,
             // Fetch every individual student enrolled in this specific offering
-            enrollments: { 
-              select: { studentId: true } 
-            }
-          } 
-        } 
-      }
+            enrollments: {
+              select: { studentId: true },
+            },
+          },
+        },
+      },
     });
 
     if (classes.length === 0) {
@@ -146,16 +147,16 @@ export class SchedulerService {
 
     // 2. Format the payload to perfectly match Python's ultimate Pydantic models
     const payload = {
-      rooms: rooms.map(r => ({
+      rooms: rooms.map((r) => ({
         id: r.id,
         name: r.name,
         capacity: r.capacity,
         roomType: r.roomType,
-        campusId: r.floor.building.campusId, 
-        buildingId: r.floor.building.id,      
-        equipment: r.equipment || [] 
+        campusId: r.floor.building.campusId,
+        buildingId: r.floor.building.id,
+        equipment: r.equipment || [],
       })),
-      professors: professors.map(p => ({
+      professors: professors.map((p) => ({
         id: p.id,
         name: p.name,
         maxHoursPerWeek: p.maxHoursPerWeek,
@@ -169,18 +170,18 @@ export class SchedulerService {
           endTime: u.endTime,
         })),
       })),
-      classes: classes.map(c => ({
+      classes: classes.map((c) => ({
         id: c.id,
         courseCode: c.courseOffering.course.code,
         durationMinutes: c.durationMinutes,
         requiresRoomType: c.requiresRoomType,
-        requiredEquipment: c.requiredEquipment || [], 
-        componentType: c.type,                        
+        requiredEquipment: c.requiredEquipment || [],
+        componentType: c.type,
         professorId: c.assignedProfessorId || null,
         cohortId: c.courseOffering.cohortId,
         // The class size, the same number the room check above uses.
         cohortHeadcount: sizeOf(c),
-        studentIds: c.courseOffering.enrollments.map(e => e.studentId) 
+        studentIds: c.courseOffering.enrollments.map((e) => e.studentId),
       })),
       fixedClasses,
     };
@@ -190,8 +191,10 @@ export class SchedulerService {
     const solverUrl = solverEndpoint(process.env.SOLVER_URL);
     const timeoutMs = solverTimeoutMs(process.env.SOLVER_TIMEOUT_SECONDS);
     try {
-      console.log(`🧠 Sending ${payload.classes.length} classes to Python. Checking individual student conflicts...`);
-      
+      console.log(
+        `🧠 Sending ${payload.classes.length} classes to Python. Checking individual student conflicts...`,
+      );
+
       // 🚨 TIME LIMIT: waits up to SOLVER_TIMEOUT_SECONDS (default 30 minutes, 0 = no limit) for Python to optimize!
       const response = await firstValueFrom(
         this.httpService.post<SolverAnswer>(solverUrl, payload, {
@@ -210,7 +213,7 @@ export class SchedulerService {
 
       // 4. The puzzle is solved! Save the times and rooms back to PostgreSQL
       console.log('✅ Brain returned a valid schedule. Saving to database...');
-      
+
       // One update per class, all run in a single transaction: either every
       // class gets its room and time, or (if one save fails) none of them does.
       const updates = result.scheduledClasses.map((scheduledClass) =>
@@ -235,18 +238,17 @@ export class SchedulerService {
       }
       const savedCount = updates.length;
 
-      return { 
-        success: true, 
-        message: `Successfully scheduled ${savedCount} classes checking thousands of individual student conflicts!` 
+      return {
+        success: true,
+        message: `Successfully scheduled ${savedCount} classes checking thousands of individual student conflicts!`,
       };
-
-    } catch (error: any) {
+    } catch (error: unknown) {
       // "No timetable is possible" (thrown above) already carries the solver's
       // own reason: pass it on as it is instead of hiding it.
       if (error instanceof HttpException) {
         throw error;
       }
-      console.error('Timetable generation failed:', error?.response?.data || error.message);
+      console.error('Timetable generation failed:', solverErrorDetail(error));
       // Say what went wrong: solver not running, too slow, or answering with an error.
       throw describeSolverFailure(error, solverUrl, timeoutMs);
     }

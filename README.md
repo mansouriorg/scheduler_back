@@ -166,8 +166,9 @@ The data model is in `prisma/schema.prisma`.
 | `pnpm lint`               | ESLint; note that it also fixes files         |
 | `pnpm format`             | Prettier; rewrites the files in `src/`        |
 
-Most files in `src/` follow Prettier; `src/scheduler/scheduler.service.ts` does not yet
-(its older lines are not formatted).
+Every file in `src/` and `test/` follows Prettier, and lint reports no problems.
+To check without changing any file, run `pnpm exec eslint src test` (it takes
+about a minute; no output means no problems).
 
 ## Tests
 

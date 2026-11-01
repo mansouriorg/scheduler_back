@@ -50,6 +50,18 @@ function describeDuration(ms: number): string {
   return seconds === 1 ? '1 second' : `${seconds} seconds`;
 }
 
+// What the brain_server terminal shows when the call to scheduler-brain failed:
+// the answer of scheduler-brain when it sent one, or else the error message.
+export function solverErrorDetail(error: unknown): unknown {
+  if (isAxiosError(error)) {
+    const answer: unknown = error.response?.data;
+    if (answer) {
+      return answer;
+    }
+  }
+  return error instanceof Error ? error.message : error;
+}
+
 // Turns a failed call to scheduler-brain into an error whose message says what
 // went wrong and what to do. The web app shows this message as it is.
 export function describeSolverFailure(

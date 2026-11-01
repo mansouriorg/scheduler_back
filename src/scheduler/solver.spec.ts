@@ -4,6 +4,7 @@ import {
   DEFAULT_SOLVER_URL,
   describeSolverFailure,
   solverEndpoint,
+  solverErrorDetail,
   solverTimeoutMs,
 } from './solver';
 
@@ -85,5 +86,30 @@ describe('describeSolverFailure', () => {
     expect(result.message).toBe(
       'Could not finish the timetable. The brain_server terminal shows the details.',
     );
+  });
+});
+
+describe('solverErrorDetail', () => {
+  it('shows the answer of scheduler-brain when it sent one', () => {
+    const error = new AxiosError('Request failed', 'ERR_BAD_RESPONSE');
+    error.response = {
+      status: 500,
+      data: { detail: 'The solver stopped.' },
+    } as AxiosResponse;
+
+    expect(solverErrorDetail(error)).toEqual({ detail: 'The solver stopped.' });
+  });
+
+  it('shows the error message when scheduler-brain sent no answer', () => {
+    const error = new AxiosError('connect ECONNREFUSED', 'ECONNREFUSED');
+
+    expect(solverErrorDetail(error)).toBe('connect ECONNREFUSED');
+    expect(solverErrorDetail(new Error('database is down'))).toBe(
+      'database is down',
+    );
+  });
+
+  it('shows anything else as it is', () => {
+    expect(solverErrorDetail('stopped')).toBe('stopped');
   });
 });

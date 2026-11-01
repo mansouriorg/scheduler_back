@@ -14,7 +14,19 @@ import { CoursesModule } from './courses/courses.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 
 @Module({
-  imports: [PrismaModule, ProfessorsModule, RoomsModule, CohortsModule, TermsModule, CampusesModule, BuildingsModule, FloorsModule, CourseOfferingsModule, CoursesModule, SchedulerModule],
+  imports: [
+    PrismaModule,
+    ProfessorsModule,
+    RoomsModule,
+    CohortsModule,
+    TermsModule,
+    CampusesModule,
+    BuildingsModule,
+    FloorsModule,
+    CourseOfferingsModule,
+    CoursesModule,
+    SchedulerModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })

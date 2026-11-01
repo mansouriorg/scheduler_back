@@ -24,7 +24,7 @@ async function bootstrap() {
   // 3. Start the server on port 3001 (or whatever your environment variable dictates)
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
-  
+
   console.log(`🚀 NestJS Backend is running on: http://localhost:${port}`);
 }
-bootstrap();
+void bootstrap();

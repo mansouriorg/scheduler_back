@@ -76,6 +76,15 @@ otherwise). `DELETE /terms/:id` deletes a term without course offerings. Otherwi
 the delete is refused (409, with the reason), because the database would delete its
 course offerings and their classes along with it.
 
+`PATCH /courses/:id` changes a course. The hours of its parts must still add up to
+the course hours (400 otherwise), and the code must not belong to another course
+(409). Sent parts (`componentsTemplate`) replace the old ones. A course offering
+copies the parts into its classes when it is created, so existing offerings keep
+their classes and only new offerings use the changed parts. `DELETE /courses/:id`
+deletes a course without course offerings. Otherwise the delete is refused (409,
+with the reason), because the database would delete its course offerings and their
+classes along with it.
+
 `POST /scheduler/generate` builds the timetable through scheduler-brain. When it
 cannot, the answer says why, and the web app shows that message:
 
@@ -120,6 +129,7 @@ stand-ins.
   and deleting campuses, buildings and floors.
 - `src/cohorts/cohorts.service.spec.ts`: changing and deleting cohorts.
 - `src/terms/terms.service.spec.ts`: changing and deleting terms.
+- `src/courses/courses.service.spec.ts`: changing and deleting courses.
 - `src/prisma/prisma.service.spec.ts`: the message when `DATABASE_URL` is missing.
 - `src/cors-origins.spec.ts`: reading `CORS_ORIGIN`.
 - The other files, made by the Nest generator, check little more than that each

@@ -108,11 +108,14 @@ classes keep their room, day and time. All changes are saved, or none: it is ref
 (409, with the reason) when a teacher would teach more hours a week than their maximum
 (all classes of terms with overlapping dates count), or is busy or not available at the
 time of a class that is already in the timetable (`src/common/teacher-fit.ts`).
-Generating the timetable keeps the classes it places apart for each teacher; it does
-not see the classes that are already in the timetable.
+Generating the timetable keeps the classes of each teacher apart.
 
-`POST /scheduler/generate` builds the timetable through scheduler-brain. When it
-cannot, the answer says why, and the web app shows that message:
+`POST /scheduler/generate` builds the timetable through scheduler-brain. It places
+the Semester 1 classes that have no time yet. Classes that are already in the
+timetable (in terms whose dates overlap) keep their room, day and time: they are
+sent as `fixedClasses`, and scheduler-brain places the new classes around them, so
+no room, teacher, cohort or student is booked twice. When it cannot, the answer
+says why, and the web app shows that message:
 
 - 400: some classes fit in no room (wrong type, too few seats or missing
   equipment); the message names them, and scheduler-brain is not called.
@@ -152,9 +155,10 @@ scheduler-brain: PrismaService and the call to scheduler-brain are replaced by
 stand-ins.
 
 - `src/scheduler/scheduler.service.spec.ts`: timetable generation (which classes
-  are picked, the data sent to scheduler-brain, how its answer is saved in one
-  transaction, its reason when no timetable is possible, and the errors when it
-  cannot be reached or saving fails), and clearing the timetable.
+  are picked, the classes already in the timetable, the data sent to
+  scheduler-brain, how its answer is saved in one transaction, its reason when no
+  timetable is possible, and the errors when it cannot be reached or saving
+  fails), and clearing the timetable.
 - `src/scheduler/solver.spec.ts`: the `SOLVER_URL` and `SOLVER_TIMEOUT_SECONDS`
   settings, and the error messages listed under Resources.
 - `src/professors/professors.service.spec.ts`: changing and deleting teachers.

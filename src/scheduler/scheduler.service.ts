@@ -53,6 +53,7 @@ export class SchedulerService {
           include: { 
             course: true,
             cohort: true,
+            term: true,
             // Fetch every individual student enrolled in this specific offering
             enrollments: { 
               select: { studentId: true } 
@@ -88,6 +89,53 @@ export class SchedulerService {
       throw new HttpException(noRoom, HttpStatus.BAD_REQUEST);
     }
 
+    // The classes already in the timetable, in terms whose dates overlap those
+    // of the classes to place: they keep their room, day and time, and
+    // scheduler-brain places the new classes around them.
+    const terms = [
+      ...new Map(
+        classes.map((c) => [c.courseOffering.term.id, c.courseOffering.term]),
+      ).values(),
+    ];
+    const placed = await this.prisma.classComponent.findMany({
+      where: {
+        startTime: { not: null },
+        courseOffering: {
+          term: {
+            OR: terms.map((term) => ({
+              startDate: { lte: term.endDate },
+              endDate: { gte: term.startDate },
+            })),
+          },
+        },
+      },
+      include: {
+        courseOffering: {
+          include: { enrollments: { select: { studentId: true } } },
+        },
+      },
+    });
+    const fixedClasses = placed.flatMap((c) =>
+      c.assignedRoomId !== null &&
+      c.dayOfWeek !== null &&
+      c.startTime !== null &&
+      c.endTime !== null
+        ? [
+            {
+              id: c.id,
+              roomId: c.assignedRoomId,
+              dayOfWeek: c.dayOfWeek,
+              startTime: c.startTime,
+              endTime: c.endTime,
+              durationMinutes: c.durationMinutes,
+              professorId: c.assignedProfessorId,
+              cohortId: c.courseOffering.cohortId,
+              studentIds: c.courseOffering.enrollments.map((e) => e.studentId),
+            },
+          ]
+        : [],
+    );
+
     // 2. Format the payload to perfectly match Python's ultimate Pydantic models
     const payload = {
       rooms: rooms.map(r => ({
@@ -119,7 +167,8 @@ export class SchedulerService {
         // The class size, the same number the room check above uses.
         cohortHeadcount: sizeOf(c),
         studentIds: c.courseOffering.enrollments.map(e => e.studentId) 
-      }))
+      })),
+      fixedClasses,
     };
 
     // 3. Send the puzzle to Python!

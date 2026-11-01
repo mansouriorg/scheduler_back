@@ -81,6 +81,13 @@ function unscheduledClass(
         name: 'Software Engineering - Year 1',
         headcount,
       },
+      term: {
+        id: 'term-1',
+        name: 'Fall 2026',
+        type: 'SEMESTER_1',
+        startDate: new Date('2026-09-01'),
+        endDate: new Date('2027-01-31'),
+      },
       enrollments: [{ studentId: 'student-1' }, { studentId: 'student-2' }],
     },
   };
@@ -135,6 +142,8 @@ const expectedPayload = {
       studentIds: ['student-1', 'student-2'],
     },
   ],
+  // No class is in the timetable yet.
+  fixedClasses: [],
 };
 
 // The settings read by the service; every test starts without them (the defaults).
@@ -228,6 +237,7 @@ describe('SchedulerService', () => {
           include: {
             course: true,
             cohort: true,
+            term: true,
             enrollments: { select: { studentId: true } },
           },
         },
@@ -258,6 +268,77 @@ describe('SchedulerService', () => {
     expect(http.post).toHaveBeenCalledWith(
       'http://127.0.0.1:8000/solve',
       expectedPayload,
+      { timeout: THIRTY_MINUTES },
+    );
+  });
+
+  it('sends the classes already in the timetable, which keep their room, day and time', async () => {
+    // The first query finds the classes to place, the second one the classes
+    // that are already in the timetable in the same weeks.
+    const placed = {
+      ...unscheduledClass('class-9', 'LECTURE', 'prof-1'),
+      assignedRoomId: 'room-1',
+      dayOfWeek: 'MONDAY',
+      startTime: '08:30',
+      endTime: '10:00',
+    };
+    // A class with a time but no room (not made by Generate) is left out.
+    const withoutRoom = { ...placed, id: 'class-8', assignedRoomId: null };
+    prisma.classComponent.findMany.mockImplementation(
+      (args: { where: { startTime: unknown } }) =>
+        Promise.resolve(
+          args.where.startTime === null
+            ? [
+                unscheduledClass('class-1', 'TD', 'prof-1'),
+                unscheduledClass('class-2', 'TP', null),
+              ]
+            : [placed, withoutRoom],
+        ),
+    );
+    http.post.mockReturnValue(
+      of({ data: { success: true, scheduledClasses: [] } }),
+    );
+
+    await service.autoGenerate();
+
+    expect(prisma.classComponent.findMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        startTime: { not: null },
+        courseOffering: {
+          term: {
+            OR: [
+              {
+                startDate: { lte: new Date('2027-01-31') },
+                endDate: { gte: new Date('2026-09-01') },
+              },
+            ],
+          },
+        },
+      },
+      include: {
+        courseOffering: {
+          include: { enrollments: { select: { studentId: true } } },
+        },
+      },
+    });
+    expect(http.post).toHaveBeenCalledWith(
+      'http://127.0.0.1:8000/solve',
+      {
+        ...expectedPayload,
+        fixedClasses: [
+          {
+            id: 'class-9',
+            roomId: 'room-1',
+            dayOfWeek: 'MONDAY',
+            startTime: '08:30',
+            endTime: '10:00',
+            durationMinutes: 90,
+            professorId: 'prof-1',
+            cohortId: 'cohort-1',
+            studentIds: ['student-1', 'student-2'],
+          },
+        ],
+      },
       { timeout: THIRTY_MINUTES },
     );
   });

@@ -7,27 +7,15 @@ import type { Equipment, RoomType } from 'generated/prisma/enums';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  EQUIPMENT_NAMES,
+  ROOM_TYPE_NAMES,
+  classSize,
+  joinNames,
+} from '../common/room-fit';
 
 const ROOM_NOT_FOUND =
   'This room does not exist any more. Reload the page to see the current list.';
-
-// The names the web app shows for room types and equipment.
-const ROOM_TYPE_NAMES: Record<RoomType, string> = {
-  AMPHI: 'Amphi',
-  CLASSROOM: 'Classroom',
-  COMPUTER_LAB: 'Computer Lab',
-  WORKSHOP: 'Workshop',
-  CHEMISTRY_LAB: 'Chemistry Lab',
-};
-
-const EQUIPMENT_NAMES: Record<Equipment, string> = {
-  COMPUTERS: 'PC Computers',
-  MAC_COMPUTERS: 'Mac Computers',
-  PROJECTOR: 'Projector',
-  CHEMISTRY_HOOD: 'Chemistry Hood',
-  WHITEBOARD: 'Whiteboard',
-  SMARTBOARD: 'Smartboard',
-};
 
 // A class booked in a room, with what it needs from that room.
 type BookedClass = {
@@ -36,6 +24,7 @@ type BookedClass = {
   requiredEquipment: Equipment[];
   courseOffering: {
     course: { code: string };
+    cohort: { headcount: number };
     _count: { enrollments: number };
   };
 };
@@ -67,7 +56,8 @@ export class RoomsService {
   // Changes only the fields that were sent; 404 when the room does not exist.
   // A change is refused (409) when it would leave a class booked in the room
   // without what scheduler-brain booked it for: the room type the class needs,
-  // a seat for each enrolled student, and the equipment it needs.
+  // a seat for each of its students (see classSize), and the equipment it
+  // needs.
   async update(id: string, updateRoomDto: UpdateRoomDto) {
     const room = await this.findWithBookedClasses(id);
     const reason = whyTheChangeIsRefused(room, updateRoomDto);
@@ -109,6 +99,7 @@ export class RoomsService {
             courseOffering: {
               select: {
                 course: { select: { code: true } },
+                cohort: { select: { headcount: true } },
                 _count: { select: { enrollments: true } },
               },
             },
@@ -145,13 +136,11 @@ function whyTheChangeIsRefused(
 
   const capacity = change.capacity ?? room.capacity;
   const tooBig = booked.filter((c) => {
-    const students = c.courseOffering._count.enrollments;
+    const students = studentsOf(c);
     return students <= room.capacity && students > capacity;
   });
   if (tooBig.length > 0) {
-    const most = Math.max(
-      ...tooBig.map((c) => c.courseOffering._count.enrollments),
-    );
+    const most = Math.max(...tooBig.map(studentsOf));
     const upTo = tooBig.length === 1 ? '' : 'up to ';
     reasons.push(
       `${room.name} cannot have fewer than ${most} seats: it is booked for ${describeClasses(tooBig)} with ${upTo}${most} students.`,
@@ -196,10 +185,9 @@ function need(classes: BookedClass[]): string {
   return classes.length === 1 ? 'needs' : 'need';
 }
 
-// "A", "A and B", "A, B and C".
-function joinNames(names: string[]): string {
-  if (names.length <= 1) {
-    return names.join('');
-  }
-  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+function studentsOf(c: BookedClass): number {
+  return classSize(
+    c.courseOffering.cohort.headcount,
+    c.courseOffering._count.enrollments,
+  );
 }

@@ -57,8 +57,14 @@ reason) while classes are assigned to the teacher, so no class loses its teacher
 `PATCH /rooms/:id` and `DELETE /rooms/:id` do the same for rooms. While classes
 are booked in a room, it cannot be deleted, and a change is refused (409, with
 the reason) when a booked class would no longer fit: it needs its room type, a
-seat for each enrolled student and its equipment, the rules scheduler-brain
-books rooms by. A new name or floor is always accepted.
+seat for each of its students and its equipment, the rules scheduler-brain books
+rooms by. A new name or floor is always accepted.
+
+A class has as many students as the headcount of its cohort, or as are enrolled
+in its course offering when there are more (`src/common/room-fit.ts`). The app
+does not enroll students yet, so the headcount is what usually counts. That is
+why `PATCH /cohorts/:id` refuses a larger headcount (409, with the reason) when a
+class of the cohort is booked in a room that would then be too small.
 
 `PATCH` and `DELETE` on `/campuses/:id`, `/buildings/:id` and `/floors/:id` change
 or delete a place; a new `campusId` or `buildingId` moves a building or a floor. A
@@ -88,6 +94,8 @@ classes along with it.
 `POST /scheduler/generate` builds the timetable through scheduler-brain. When it
 cannot, the answer says why, and the web app shows that message:
 
+- 400: some classes fit in no room (wrong type, too few seats or missing
+  equipment); the message names them, and scheduler-brain is not called.
 - 400: no timetable is possible; the message is scheduler-brain's own reason.
 - 502: scheduler-brain answered with an error; its terminal shows the details.
 - 503: scheduler-brain cannot be reached at `SOLVER_URL`.
@@ -125,6 +133,7 @@ stand-ins.
   settings, and the error messages listed under Resources.
 - `src/professors/professors.service.spec.ts`: changing and deleting teachers.
 - `src/rooms/rooms.service.spec.ts`: changing and deleting rooms.
+- `src/common/room-fit.spec.ts`: the class size and which room a class fits in.
 - `src/campuses/`, `src/buildings/` and `src/floors/`, `*.service.spec.ts`: changing
   and deleting campuses, buildings and floors.
 - `src/cohorts/cohorts.service.spec.ts`: changing and deleting cohorts.

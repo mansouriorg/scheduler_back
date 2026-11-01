@@ -8,6 +8,7 @@ import {
   solverTimeoutMs,
   type SolverAnswer,
 } from './solver';
+import { classSize, describeClassesWithoutRoom } from '../common/room-fit';
 
 @Injectable()
 export class SchedulerService {
@@ -65,6 +66,28 @@ export class SchedulerService {
       return { message: 'All Semester 1 classes are already scheduled! Nothing to do.' };
     }
 
+    // Stop here when a class fits in no room (type, seats or equipment):
+    // scheduler-brain could only answer that no timetable is possible, without
+    // saying which class or why. A class has as many students as its cohort's
+    // headcount, or as are enrolled when there are more (see classSize).
+    const sizeOf = (c: (typeof classes)[number]) =>
+      classSize(
+        c.courseOffering.cohort.headcount,
+        c.courseOffering.enrollments.length,
+      );
+    const noRoom = describeClassesWithoutRoom(
+      classes.map((c) => ({
+        label: `${c.courseOffering.course.code} ${c.type} for ${c.courseOffering.cohort.name}`,
+        size: sizeOf(c),
+        requiresRoomType: c.requiresRoomType,
+        requiredEquipment: c.requiredEquipment,
+      })),
+      rooms,
+    );
+    if (noRoom !== null) {
+      throw new HttpException(noRoom, HttpStatus.BAD_REQUEST);
+    }
+
     // 2. Format the payload to perfectly match Python's ultimate Pydantic models
     const payload = {
       rooms: rooms.map(r => ({
@@ -93,8 +116,8 @@ export class SchedulerService {
         componentType: c.type,                        
         professorId: c.assignedProfessorId || null,
         cohortId: c.courseOffering.cohortId,
-        // Send the ACTUAL physical number of enrolled students!
-        cohortHeadcount: c.courseOffering.enrollments.length,
+        // The class size, the same number the room check above uses.
+        cohortHeadcount: sizeOf(c),
         studentIds: c.courseOffering.enrollments.map(e => e.studentId) 
       }))
     };

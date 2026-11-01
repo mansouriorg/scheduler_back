@@ -48,10 +48,13 @@ const professor = {
 };
 
 // A class part that has no day, time or room yet, as the database returns it.
+// Its cohort has 25 students unless another headcount is given; 2 students are
+// enrolled in its course offering.
 function unscheduledClass(
   id: string,
   type: string,
   professorId: string | null,
+  headcount = 25,
 ) {
   return {
     id,
@@ -73,7 +76,11 @@ function unscheduledClass(
       courseId: 'course-1',
       cohortId: 'cohort-1',
       course: { id: 'course-1', code: 'DEV-101', title: 'Web Development' },
-      cohort: { id: 'cohort-1', name: 'Software Engineering - Year 1' },
+      cohort: {
+        id: 'cohort-1',
+        name: 'Software Engineering - Year 1',
+        headcount,
+      },
       enrollments: [{ studentId: 'student-1' }, { studentId: 'student-2' }],
     },
   };
@@ -112,7 +119,7 @@ const expectedPayload = {
       componentType: 'TD',
       professorId: 'prof-1',
       cohortId: 'cohort-1',
-      cohortHeadcount: 2,
+      cohortHeadcount: 25,
       studentIds: ['student-1', 'student-2'],
     },
     {
@@ -124,7 +131,7 @@ const expectedPayload = {
       componentType: 'TP',
       professorId: null,
       cohortId: 'cohort-1',
-      cohortHeadcount: 2,
+      cohortHeadcount: 25,
       studentIds: ['student-1', 'student-2'],
     },
   ],
@@ -248,6 +255,47 @@ describe('SchedulerService', () => {
       expectedPayload,
       { timeout: THIRTY_MINUTES },
     );
+  });
+
+  it('sizes a class by its enrolled students when there are more than the headcount', async () => {
+    prisma.classComponent.findMany.mockResolvedValue([
+      unscheduledClass('class-1', 'TD', 'prof-1', 1),
+    ]);
+    http.post.mockReturnValue(
+      of({ data: { success: true, scheduledClasses: [] } }),
+    );
+
+    await service.autoGenerate();
+
+    expect(http.post).toHaveBeenCalledWith(
+      'http://127.0.0.1:8000/solve',
+      {
+        ...expectedPayload,
+        classes: [{ ...expectedPayload.classes[0], cohortHeadcount: 2 }],
+      },
+      { timeout: THIRTY_MINUTES },
+    );
+  });
+
+  it('says which class fits in no room, and calls nothing, when a cohort is too big for the rooms', async () => {
+    prisma.classComponent.findMany.mockResolvedValue([
+      unscheduledClass('class-1', 'TD', 'prof-1', 45),
+    ]);
+
+    const error: unknown = await service
+      .autoGenerate()
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(HttpException);
+    const httpError = error as HttpException;
+    expect(httpError.getStatus()).toBe(HttpStatus.BAD_REQUEST);
+    expect(httpError.message).toBe(
+      'The timetable cannot be made, because 1 class has no room it fits in. ' +
+        'DEV-101 TD for Software Engineering - Year 1 has 45 students, but the largest room of type "Computer Lab" with PC Computers has 30 seats. ' +
+        'Add or change rooms on the Classrooms page, or check the headcount of the cohorts.',
+    );
+    expect(http.post).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('uses SOLVER_URL and SOLVER_TIMEOUT_SECONDS when they are set', async () => {

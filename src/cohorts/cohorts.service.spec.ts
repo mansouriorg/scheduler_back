@@ -13,10 +13,25 @@ const cohort = {
   currentSemester: 'SEMESTER_1',
 };
 
-// An offering of a course to the cohort, as the service reads it.
+// An offering of a course to the cohort, as the service reads it for a delete.
 const offering = (code: string, term: string) => ({
   course: { code },
   term: { name: term },
+});
+
+// An offering as the service reads it for a change: its classes that are
+// booked in a room (name, seats), and how many students are enrolled.
+const bookedOffering = (
+  code: string,
+  classes: [string, string, number][],
+  enrolled = 0,
+) => ({
+  course: { code },
+  _count: { enrollments: enrolled },
+  classes: classes.map(([type, room, capacity]) => ({
+    type,
+    room: { name: room, capacity },
+  })),
 });
 
 type PrismaStandIn = {
@@ -26,6 +41,12 @@ type PrismaStandIn = {
 describe('CohortsService', () => {
   let service: CohortsService;
   let prisma: PrismaStandIn;
+
+  // The cohort as findUnique returns it for a change.
+  const cohortBookedIn = (
+    ...courseOfferings: ReturnType<typeof bookedOffering>[]
+  ) =>
+    prisma.cohort.findUnique.mockResolvedValue({ ...cohort, courseOfferings });
 
   // The cohort as findUnique returns it for a delete.
   const cohortWith = (
@@ -58,7 +79,7 @@ describe('CohortsService', () => {
   });
 
   it('changes the fields that were sent', async () => {
-    prisma.cohort.findUnique.mockResolvedValue(cohort);
+    cohortBookedIn(bookedOffering('DEV-101', [['TD', 'Room 12', 50]]));
 
     await service.update('cohort-1', { headcount: 48 });
 
@@ -66,6 +87,37 @@ describe('CohortsService', () => {
       where: { id: 'cohort-1' },
       data: { headcount: 48 },
     });
+  });
+
+  it('refuses more students than a booked class has seats for in its room', async () => {
+    cohortBookedIn(
+      bookedOffering('DEV-101', [
+        ['TD', 'Room 12', 50],
+        ['TP', 'Lab 304', 48],
+      ]),
+      bookedOffering('DB-201', [['TP', 'Lab 305', 46]]),
+    );
+
+    const error = await refusal(service.update('cohort-1', { headcount: 49 }));
+
+    expect(error).toBeInstanceOf(ConflictException);
+    expect((error as ConflictException).message).toBe(
+      'SE - Year 1 cannot have 49 students: 2 of its classes (DEV-101 TP, DB-201 TP) are booked in Lab 304 (48 seats) and Lab 305 (46 seats). It can have at most 46 students while those classes stay there.',
+    );
+    expect(prisma.cohort.update).not.toHaveBeenCalled();
+  });
+
+  it('only counts classes that the new headcount makes too big', async () => {
+    // Lab 300 is already too small for 45 students; more enrolled students
+    // than the new headcount keep the size of DB-201 at 60.
+    cohortBookedIn(
+      bookedOffering('DEV-101', [['TP', 'Lab 300', 40]]),
+      bookedOffering('DB-201', [['TD', 'Room 12', 60]], 60),
+    );
+
+    await service.update('cohort-1', { headcount: 55 });
+
+    expect(prisma.cohort.update).toHaveBeenCalled();
   });
 
   it('answers 404, and changes nothing, for a cohort that does not exist', async () => {

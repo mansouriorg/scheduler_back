@@ -15,12 +15,14 @@ const room = {
   floorId: 'floor-1',
 };
 
-// A class booked in Lab 304, as the service reads it from the database.
+// A class booked in Lab 304, as the service reads it from the database: the
+// headcount of its cohort, and how many students are enrolled (none by default).
 function bookedClass(
   code: string,
   type: string,
-  students: number,
+  headcount: number,
   requiredEquipment: string[] = [],
+  enrolled = 0,
 ) {
   return {
     type,
@@ -28,7 +30,8 @@ function bookedClass(
     requiredEquipment,
     courseOffering: {
       course: { code },
-      _count: { enrollments: students },
+      cohort: { headcount },
+      _count: { enrollments: enrolled },
     },
   };
 }
@@ -122,6 +125,17 @@ describe('RoomsService', () => {
       );
 
       const error = await refusal(service.update('room-1', { capacity: 20 }));
+
+      expect((error as ConflictException).message).toBe(
+        'Lab 304 cannot have fewer than 28 seats: it is booked for 1 class (DEV-101 TD) with 28 students.',
+      );
+      expect(prisma.room.update).not.toHaveBeenCalled();
+    });
+
+    it('counts the enrolled students when there are more than the headcount', async () => {
+      roomWith(bookedClass('DEV-101', 'TD', 20, [], 28));
+
+      const error = await refusal(service.update('room-1', { capacity: 25 }));
 
       expect((error as ConflictException).message).toBe(
         'Lab 304 cannot have fewer than 28 seats: it is booked for 1 class (DEV-101 TD) with 28 students.',

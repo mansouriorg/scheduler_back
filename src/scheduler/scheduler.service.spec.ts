@@ -144,7 +144,11 @@ const THIRTY_MINUTES = 30 * 60 * 1000;
 type PrismaStandIn = {
   room: { findMany: jest.Mock };
   professor: { findMany: jest.Mock };
-  classComponent: { findMany: jest.Mock; update: jest.Mock };
+  classComponent: {
+    findMany: jest.Mock;
+    update: jest.Mock;
+    updateMany: jest.Mock;
+  };
   $transaction: jest.Mock;
 };
 
@@ -176,6 +180,7 @@ describe('SchedulerService', () => {
         update: jest.fn((args: { where: { id: string } }) => ({
           saves: args.where.id,
         })),
+        updateMany: jest.fn().mockResolvedValue({ count: 3 }),
       },
       $transaction: jest.fn().mockResolvedValue([]),
     };
@@ -457,5 +462,46 @@ describe('SchedulerService', () => {
     );
     expect(prisma.classComponent.update).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  describe('clearTimetable', () => {
+    it('takes the room, day and time off every placed class in one write', async () => {
+      const result = await service.clearTimetable();
+
+      expect(prisma.classComponent.updateMany).toHaveBeenCalledTimes(1);
+      expect(prisma.classComponent.updateMany).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { assignedRoomId: { not: null } },
+            { dayOfWeek: { not: null } },
+            { startTime: { not: null } },
+            { endTime: { not: null } },
+          ],
+        },
+        data: {
+          assignedRoomId: null,
+          dayOfWeek: null,
+          startTime: null,
+          endTime: null,
+        },
+      });
+      expect(result).toEqual({
+        cleared: 3,
+        message:
+          '3 classes were taken out of the timetable. Generate the timetable to place them again.',
+      });
+      expect(http.post).not.toHaveBeenCalled();
+    });
+
+    it('says so when the timetable is already empty', async () => {
+      prisma.classComponent.updateMany.mockResolvedValue({ count: 0 });
+
+      const result = await service.clearTimetable();
+
+      expect(result).toEqual({
+        cleared: 0,
+        message: 'The timetable is already empty.',
+      });
+    });
   });
 });

@@ -188,4 +188,34 @@ export class SchedulerService {
       throw describeSolverFailure(error, solverUrl, timeoutMs);
     }
   }
+
+  // Takes the room, day and time off every class that has one, in one write,
+  // so the next generation places all of them again. The classes, their
+  // teachers and everything else stay. Says how many classes were cleared.
+  async clearTimetable() {
+    const { count } = await this.prisma.classComponent.updateMany({
+      where: {
+        OR: [
+          { assignedRoomId: { not: null } },
+          { dayOfWeek: { not: null } },
+          { startTime: { not: null } },
+          { endTime: { not: null } },
+        ],
+      },
+      data: {
+        assignedRoomId: null,
+        dayOfWeek: null,
+        startTime: null,
+        endTime: null,
+      },
+    });
+    const cleared = count === 1 ? '1 class was' : `${count} classes were`;
+    return {
+      cleared: count,
+      message:
+        count === 0
+          ? 'The timetable is already empty.'
+          : `${cleared} taken out of the timetable. Generate the timetable to place ${count === 1 ? 'it' : 'them'} again.`,
+    };
+  }
 }

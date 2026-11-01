@@ -114,6 +114,12 @@ cannot, the answer says why, and the web app shows that message:
 The timetable is saved in one database transaction: if saving fails, no class
 is changed.
 
+`DELETE /scheduler/timetable` clears the timetable: every class loses its room,
+day and time, in one write, and the answer says how many. The classes, their
+teachers and all other data stay; generating the timetable places the classes
+again. This is also how to free a room or a cohort that the rules above refuse
+to change while classes are booked.
+
 The data model is in `prisma/schema.prisma`.
 
 ## Scripts
@@ -137,7 +143,7 @@ stand-ins.
 - `src/scheduler/scheduler.service.spec.ts`: timetable generation (which classes
   are picked, the data sent to scheduler-brain, how its answer is saved in one
   transaction, its reason when no timetable is possible, and the errors when it
-  cannot be reached or saving fails).
+  cannot be reached or saving fails), and clearing the timetable.
 - `src/scheduler/solver.spec.ts`: the `SOLVER_URL` and `SOLVER_TIMEOUT_SECONDS`
   settings, and the error messages listed under Resources.
 - `src/professors/professors.service.spec.ts`: changing and deleting teachers.

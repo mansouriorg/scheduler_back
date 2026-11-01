@@ -136,8 +136,10 @@ term through scheduler-brain. It places the classes of the term that have no tim
 yet (404 when the term does not exist). Classes that are already in the timetable
 (in that term and in terms whose dates overlap) keep their room, day and time:
 they are sent as `fixedClasses`, and scheduler-brain places the new classes around
-them, so no room, teacher, cohort or student is booked twice. When it cannot, the
-answer says why, and the web app shows that message:
+them, so no room, teacher, cohort or student is booked twice. Each is sent with its
+`courseCode`, so that the new parts of a course for a cohort go on other days than its
+parts already in the timetable. When it cannot, the answer says why, and the web app
+shows that message:
 
 - 400: some classes fit in no room (wrong type, too few seats or missing
   equipment); the message names them, and scheduler-brain is not called.

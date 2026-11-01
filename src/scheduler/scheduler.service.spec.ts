@@ -314,7 +314,7 @@ describe('SchedulerService', () => {
     );
   });
 
-  it('sends the classes already in the timetable, which keep their room, day and time', async () => {
+  it('sends the classes already in the timetable, which keep their room, day and time, with their course', async () => {
     // The first query finds the classes to place, the second one the classes
     // that are already in the timetable in the same weeks.
     const placed = {
@@ -355,7 +355,10 @@ describe('SchedulerService', () => {
       },
       include: {
         courseOffering: {
-          include: { enrollments: { select: { studentId: true } } },
+          include: {
+            course: { select: { code: true } },
+            enrollments: { select: { studentId: true } },
+          },
         },
       },
     });
@@ -373,6 +376,7 @@ describe('SchedulerService', () => {
             durationMinutes: 90,
             professorId: 'prof-1',
             cohortId: 'cohort-1',
+            courseCode: 'DEV-101',
             studentIds: ['student-1', 'student-2'],
           },
         ],

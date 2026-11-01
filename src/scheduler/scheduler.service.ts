@@ -125,7 +125,10 @@ export class SchedulerService {
       },
       include: {
         courseOffering: {
-          include: { enrollments: { select: { studentId: true } } },
+          include: {
+            course: { select: { code: true } },
+            enrollments: { select: { studentId: true } },
+          },
         },
       },
     });
@@ -144,6 +147,8 @@ export class SchedulerService {
               durationMinutes: c.durationMinutes,
               professorId: c.assignedProfessorId,
               cohortId: c.courseOffering.cohortId,
+              // The new parts of the course for that cohort go on other days.
+              courseCode: c.courseOffering.course.code,
               studentIds: c.courseOffering.enrollments.map((e) => e.studentId),
             },
           ]

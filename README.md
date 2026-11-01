@@ -60,6 +60,12 @@ the reason) when a booked class would no longer fit: it needs its room type, a
 seat for each enrolled student and its equipment, the rules scheduler-brain
 books rooms by. A new name or floor is always accepted.
 
+`PATCH` and `DELETE` on `/campuses/:id`, `/buildings/:id` and `/floors/:id` change
+or delete a place; a new `campusId` or `buildingId` moves a building or a floor. A
+delete is refused (409, with the reason) while something is inside: a campus with
+buildings, a building with floors or a floor with rooms. Otherwise the database
+would delete everything inside along with it.
+
 `POST /scheduler/generate` builds the timetable through scheduler-brain. When it
 cannot, the answer says why, and the web app shows that message:
 
@@ -100,6 +106,8 @@ stand-ins.
   settings, and the error messages listed under Resources.
 - `src/professors/professors.service.spec.ts`: changing and deleting teachers.
 - `src/rooms/rooms.service.spec.ts`: changing and deleting rooms.
+- `src/campuses/`, `src/buildings/` and `src/floors/`, `*.service.spec.ts`: changing
+  and deleting campuses, buildings and floors.
 - `src/prisma/prisma.service.spec.ts`: the message when `DATABASE_URL` is missing.
 - `src/cors-origins.spec.ts`: reading `CORS_ORIGIN`.
 - The other files, made by the Nest generator, check little more than that each

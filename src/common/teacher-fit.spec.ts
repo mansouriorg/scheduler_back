@@ -1,8 +1,10 @@
 import {
+  busiestTerm,
   findTeacherProblems,
   hoursText,
   refusalAdvice,
   timesOverlap,
+  weeklyHours,
   type TeacherClass,
   type TeacherLimits,
 } from './teacher-fit';
@@ -115,6 +117,74 @@ describe('findTeacherProblems', () => {
     expect(
       findTeacherProblems(limited, [lecture], kept, 'Fall 2026').hours,
     ).toEqual([]);
+  });
+});
+
+// A class of minutes in a term, from one date to another.
+const inTerm = (minutes: number, name: string, from: string, to: string) => ({
+  durationMinutes: minutes,
+  courseOffering: {
+    term: { id: name, name, startDate: new Date(from), endDate: new Date(to) },
+  },
+});
+
+describe('weeklyHours and busiestTerm', () => {
+  it('adds up the classes of each term, with those of terms whose dates overlap', () => {
+    const weeks = weeklyHours([
+      inTerm(300, 'Summer 2027', '2027-06-01', '2027-07-31'),
+      inTerm(90, 'Fall 2026', '2026-09-01', '2027-01-31'),
+      inTerm(120, 'Winter School', '2027-01-10', '2027-02-10'),
+      inTerm(180, 'Fall 2026', '2026-09-01', '2027-01-31'),
+    ]);
+
+    // In date order. Winter School shares January with Fall 2026, so both
+    // count 90 + 120 + 180 minutes; Summer 2027 overlaps neither.
+    expect(weeks).toEqual([
+      { termId: 'Fall 2026', termName: 'Fall 2026', minutesPerWeek: 390 },
+      {
+        termId: 'Winter School',
+        termName: 'Winter School',
+        minutesPerWeek: 390,
+      },
+      { termId: 'Summer 2027', termName: 'Summer 2027', minutesPerWeek: 300 },
+    ]);
+    expect(busiestTerm(weeks)?.termName).toBe('Fall 2026');
+  });
+
+  it('counts a term that ends on the day another starts as the same weeks', () => {
+    const weeks = weeklyHours([
+      inTerm(60, 'Block A', '2026-09-01', '2026-10-15'),
+      inTerm(90, 'Block B', '2026-10-15', '2026-12-01'),
+    ]);
+
+    expect(weeks.map((week) => week.minutesPerWeek)).toEqual([150, 150]);
+  });
+
+  it('lists terms that start on the same day by name', () => {
+    const weeks = weeklyHours([
+      inTerm(60, 'Year 2 Fall', '2026-09-01', '2027-01-31'),
+      inTerm(90, 'Year 1 Fall', '2026-09-01', '2027-01-31'),
+    ]);
+
+    expect(weeks.map((week) => week.termName)).toEqual([
+      'Year 1 Fall',
+      'Year 2 Fall',
+    ]);
+  });
+
+  it('finds the busiest term, and nothing for a teacher without classes', () => {
+    const weeks = weeklyHours([
+      inTerm(90, 'Fall 2026', '2026-09-01', '2027-01-31'),
+      inTerm(240, 'Spring 2027', '2027-02-15', '2027-06-15'),
+    ]);
+
+    expect(busiestTerm(weeks)).toEqual({
+      termId: 'Spring 2027',
+      termName: 'Spring 2027',
+      minutesPerWeek: 240,
+    });
+    expect(weeklyHours([])).toEqual([]);
+    expect(busiestTerm([])).toBeUndefined();
   });
 });
 

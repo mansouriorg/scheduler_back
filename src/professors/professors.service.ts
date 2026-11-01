@@ -8,7 +8,13 @@ import { CreateProfessorDto } from './dto/create-professor.dto';
 import { UpdateProfessorDto } from './dto/update-professor.dto';
 import { SetUnavailabilityDto, TimeOffDto } from './dto/set-unavailability.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { dayName, hoursText, timesOverlap } from '../common/teacher-fit';
+import {
+  busiestTerm,
+  dayName,
+  hoursText,
+  timesOverlap,
+  weeklyHours,
+} from '../common/teacher-fit';
 
 const TEACHER_NOT_FOUND =
   'This teacher does not exist any more. Reload the page to see the current list.';
@@ -37,16 +43,39 @@ export class ProfessorsService {
     });
   }
 
+  // All teachers, alphabetized by name, each with their times off and, for
+  // each term in which they have classes, how long they teach a week then
+  // (weeklyHours, counted as the check of the maximum counts them).
   async findAll() {
-    // Fetches all professors, alphabetized by name, each with their times off
-    return this.prisma.professor.findMany({
+    const professors = await this.prisma.professor.findMany({
       orderBy: { name: 'asc' },
       include: {
         unavailability: {
           orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
         },
+        classes: {
+          select: {
+            durationMinutes: true,
+            courseOffering: {
+              select: {
+                term: {
+                  select: {
+                    id: true,
+                    name: true,
+                    startDate: true,
+                    endDate: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
+    return professors.map(({ classes, ...professor }) => ({
+      ...professor,
+      weeklyHours: weeklyHours(classes),
+    }));
   }
 
   // Changes only the fields that were sent; 404 when the teacher does not exist.
@@ -181,9 +210,8 @@ export class ProfessorsService {
   }
 
   // 409 when the teacher already teaches more hours a week than the new
-  // maximum, in the busiest term. Every class takes place every week, in the
-  // timetable or not, and the classes of terms whose dates overlap are taught
-  // in the same weeks.
+  // maximum, in the busiest term (see weeklyHours: the Teachers page shows the
+  // same numbers).
   private async refuseTooFewHours(
     professor: { id: string; name: string },
     maxHoursPerWeek: number,
@@ -194,31 +222,21 @@ export class ProfessorsService {
         durationMinutes: true,
         courseOffering: {
           select: {
-            term: { select: { name: true, startDate: true, endDate: true } },
+            term: {
+              select: { id: true, name: true, startDate: true, endDate: true },
+            },
           },
         },
       },
     });
-    let busiest = { term: '', minutes: 0 };
-    for (const { courseOffering } of classes) {
-      const term = courseOffering.term;
-      const minutes = classes
-        .filter(
-          (other) =>
-            other.courseOffering.term.startDate.getTime() <=
-              term.endDate.getTime() &&
-            other.courseOffering.term.endDate.getTime() >=
-              term.startDate.getTime(),
-        )
-        .reduce((sum, other) => sum + other.durationMinutes, 0);
-      if (minutes > busiest.minutes) {
-        busiest = { term: term.name, minutes };
-      }
-    }
-    if (busiest.minutes > maxHoursPerWeek * 60) {
-      const taught = hoursText(busiest.minutes);
+    const busiest = busiestTerm(weeklyHours(classes));
+    if (
+      busiest !== undefined &&
+      busiest.minutesPerWeek > maxHoursPerWeek * 60
+    ) {
+      const taught = hoursText(busiest.minutesPerWeek);
       throw new ConflictException(
-        `${professor.name} already teaches ${taught} a week in ${busiest.term}, so the maximum cannot be ${hoursText(maxHoursPerWeek * 60)}. Choose other teachers for some of those classes on the Course Offerings page first, or keep a maximum of at least ${taught}.`,
+        `${professor.name} already teaches ${taught} a week in ${busiest.termName}, so the maximum cannot be ${hoursText(maxHoursPerWeek * 60)}. Choose other teachers for some of those classes on the Course Offerings page first, or keep a maximum of at least ${taught}.`,
       );
     }
   }

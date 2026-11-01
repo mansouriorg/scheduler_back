@@ -31,8 +31,8 @@ const mondayLecture = {
   },
 };
 
-// A class of the teacher, as the check of the maximum hours reads it: its
-// length and the dates of its term.
+// A class of the teacher, as the weekly hours read it: its length and its
+// term (whose id, here, is its name).
 const taught = (
   durationMinutes: number,
   name: string,
@@ -41,9 +41,26 @@ const taught = (
 ) => ({
   durationMinutes,
   courseOffering: {
-    term: { name, startDate: new Date(startDate), endDate: new Date(endDate) },
+    term: {
+      id: name,
+      name,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+    },
   },
 });
+
+// What is read of the classes of a teacher for the weekly hours.
+const CLASS_HOURS = {
+  durationMinutes: true,
+  courseOffering: {
+    select: {
+      term: {
+        select: { id: true, name: true, startDate: true, endDate: true },
+      },
+    },
+  },
+};
 
 // The order in which times off are read back.
 const TIMES_OFF_ORDER = {
@@ -93,13 +110,53 @@ describe('ProfessorsService', () => {
   });
 
   describe('findAll', () => {
-    it('lists the teachers by name, each with their times off in order', async () => {
-      await service.findAll();
+    it('lists the teachers by name, with their times off and their hours a week in each term', async () => {
+      const sami = { ...teacher, id: 'prof-2', name: 'Dr. Sami Trabelsi' };
+      prisma.professor.findMany.mockResolvedValue([
+        {
+          ...teacher,
+          unavailability: [],
+          classes: [
+            taught(360, 'Fall 2026', '2026-09-01', '2027-01-31'),
+            taught(120, 'Winter School', '2027-01-10', '2027-02-10'),
+            taught(90, 'Fall 2026', '2026-09-01', '2027-01-31'),
+            taught(300, 'Summer 2027', '2027-06-01', '2027-07-31'),
+          ],
+        },
+        { ...sami, unavailability: [], classes: [] },
+      ]);
+
+      const result = await service.findAll();
 
       expect(prisma.professor.findMany).toHaveBeenCalledWith({
         orderBy: { name: 'asc' },
-        include: TIMES_OFF_ORDER,
+        include: { ...TIMES_OFF_ORDER, classes: { select: CLASS_HOURS } },
       });
+      // The classes themselves are not sent: only the hours.
+      expect(result).toEqual([
+        {
+          ...teacher,
+          unavailability: [],
+          weeklyHours: [
+            {
+              termId: 'Fall 2026',
+              termName: 'Fall 2026',
+              minutesPerWeek: 570,
+            },
+            {
+              termId: 'Winter School',
+              termName: 'Winter School',
+              minutesPerWeek: 570,
+            },
+            {
+              termId: 'Summer 2027',
+              termName: 'Summer 2027',
+              minutesPerWeek: 300,
+            },
+          ],
+        },
+        { ...sami, unavailability: [], weeklyHours: [] },
+      ]);
     });
   });
 
@@ -278,14 +335,7 @@ describe('ProfessorsService', () => {
 
       expect(prisma.classComponent.findMany).toHaveBeenCalledWith({
         where: { assignedProfessorId: 'prof-1' },
-        select: {
-          durationMinutes: true,
-          courseOffering: {
-            select: {
-              term: { select: { name: true, startDate: true, endDate: true } },
-            },
-          },
-        },
+        select: CLASS_HOURS,
       });
       expect(error).toBeInstanceOf(ConflictException);
       expect((error as ConflictException).message).toBe(

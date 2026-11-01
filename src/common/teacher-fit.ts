@@ -114,6 +114,68 @@ export function findTeacherProblems(
   return { time, hours };
 }
 
+// A class of a teacher, as the weekly hours read it: its length and its term.
+export type TermClass = {
+  durationMinutes: number;
+  courseOffering: {
+    term: { id: string; name: string; startDate: Date; endDate: Date };
+  };
+};
+
+// How long a teacher teaches each week of a term.
+export type WeeklyHours = {
+  termId: string;
+  termName: string;
+  minutesPerWeek: number;
+};
+
+// True when two terms share at least one day: their classes are taught in the
+// same weeks.
+function termsOverlap(
+  a: { startDate: Date; endDate: Date },
+  b: { startDate: Date; endDate: Date },
+): boolean {
+  return (
+    a.startDate.getTime() <= b.endDate.getTime() &&
+    b.startDate.getTime() <= a.endDate.getTime()
+  );
+}
+
+// For each term in which the teacher has classes, in date order: the minutes
+// they teach a week then. Every class takes place every week, in the timetable
+// or not, and the classes of terms whose dates overlap count together.
+export function weeklyHours(classes: TermClass[]): WeeklyHours[] {
+  const terms = new Map<string, TermClass['courseOffering']['term']>();
+  for (const cls of classes) {
+    terms.set(cls.courseOffering.term.id, cls.courseOffering.term);
+  }
+  return [...terms.values()]
+    .sort(
+      (a, b) =>
+        a.startDate.getTime() - b.startDate.getTime() ||
+        a.name.localeCompare(b.name),
+    )
+    .map((term) => ({
+      termId: term.id,
+      termName: term.name,
+      minutesPerWeek: classes
+        .filter((cls) => termsOverlap(cls.courseOffering.term, term))
+        .reduce((sum, cls) => sum + cls.durationMinutes, 0),
+    }));
+}
+
+// The term in which the teacher teaches the most a week (the first one, when
+// two are equal); undefined when the teacher has no classes.
+export function busiestTerm(weeks: WeeklyHours[]): WeeklyHours | undefined {
+  return weeks.reduce<WeeklyHours | undefined>(
+    (most, week) =>
+      most === undefined || week.minutesPerWeek > most.minutesPerWeek
+        ? week
+        : most,
+    undefined,
+  );
+}
+
 // What to do after a refusal: always another teacher; more hours when the
 // hours were the problem; new times when the time was.
 export function refusalAdvice(hours: boolean, time: boolean): string {

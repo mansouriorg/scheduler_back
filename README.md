@@ -56,7 +56,12 @@ reason) while classes are assigned to the teacher, so no class loses its teacher
 A lower `maxHoursPerWeek` is refused (409, with the reason) while the teacher already
 teaches more hours a week than that in some term (the classes of terms whose dates
 overlap count together).
-`GET /professors` lists each teacher with their times off (`unavailability`).
+`GET /professors` lists each teacher with their times off (`unavailability`) and,
+for each term in which they have classes, how long they teach a week then:
+`weeklyHours`, for example `[{ "termId": "...", "termName": "Fall 2026",
+"minutesPerWeek": 540 }]`, in date order (an empty list: no classes). These are the
+numbers the check of `maxHoursPerWeek` uses: every class counts, in the timetable
+or not, and the classes of terms whose dates overlap count together.
 
 `PUT /professors/:id/unavailability` sets the times each week when a teacher
 cannot teach, for example
@@ -198,8 +203,8 @@ stand-ins.
   settings, and the error messages listed under Resources.
 - `src/scheduler/time-preferences.spec.ts`: the sentences about the classes on
   Saturday, the classes before their lecture and the times of day teachers prefer.
-- `src/professors/professors.service.spec.ts`: listing, changing and deleting
-  teachers, and setting their times off.
+- `src/professors/professors.service.spec.ts`: listing teachers with their hours
+  a week, changing and deleting teachers, and setting their times off.
 - `src/rooms/rooms.service.spec.ts`: changing and deleting rooms.
 - `src/common/room-fit.spec.ts`: the class size and which room a class fits in.
 - `src/campuses/`, `src/buildings/` and `src/floors/`, `*.service.spec.ts`: changing
@@ -209,8 +214,8 @@ stand-ins.
 - `src/courses/courses.service.spec.ts`: changing and deleting courses.
 - `src/course-offerings/course-offerings.service.spec.ts`: adding, moving and
   deleting course offerings, and choosing the teachers of their classes.
-- `src/common/teacher-fit.spec.ts`: the weekly hours of a teacher and whether
-  they are free at the time of a class.
+- `src/common/teacher-fit.spec.ts`: the weekly hours of a teacher (for a new
+  class, and in each term) and whether they are free at the time of a class.
 - `src/prisma/prisma.service.spec.ts`: the message when `DATABASE_URL` is missing.
 - `src/cors-origins.spec.ts`: reading `CORS_ORIGIN`.
 - The other files, made by the Nest generator, check little more than that each

@@ -53,6 +53,17 @@ Each folder in `src/` holds one resource with its controller, service and DTOs:
 `PATCH /professors/:id` changes the fields that are sent, and
 `DELETE /professors/:id` deletes a teacher. A delete is refused (409, with the
 reason) while classes are assigned to the teacher, so no class loses its teacher.
+`GET /professors` lists each teacher with their times off (`unavailability`).
+
+`PUT /professors/:id/unavailability` sets the times each week when a teacher
+cannot teach, for example
+`{ "times": [{ "dayOfWeek": "MONDAY", "startTime": "08:00", "endTime": "12:00" }] }`
+(a whole day is 08:00 to 18:30; an empty list: no times off). The list replaces
+that teacher's times off, all together. Times are on the hour or half hour from
+08:00 to 18:30. It is refused (400, with the reason) when a time off ends before it
+starts or two of them overlap, and (409) when a class of the teacher that is already
+in the timetable falls in a time off. Generating the timetable keeps the classes of
+each teacher out of their times off.
 
 `PATCH /rooms/:id` and `DELETE /rooms/:id` do the same for rooms. While classes
 are booked in a room, it cannot be deleted, and a change is refused (409, with
@@ -163,7 +174,8 @@ stand-ins.
   fails), and clearing the timetable.
 - `src/scheduler/solver.spec.ts`: the `SOLVER_URL` and `SOLVER_TIMEOUT_SECONDS`
   settings, and the error messages listed under Resources.
-- `src/professors/professors.service.spec.ts`: changing and deleting teachers.
+- `src/professors/professors.service.spec.ts`: listing, changing and deleting
+  teachers, and setting their times off.
 - `src/rooms/rooms.service.spec.ts`: changing and deleting rooms.
 - `src/common/room-fit.spec.ts`: the class size and which room a class fits in.
 - `src/campuses/`, `src/buildings/` and `src/floors/`, `*.service.spec.ts`: changing

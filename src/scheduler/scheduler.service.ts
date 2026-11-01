@@ -161,7 +161,13 @@ export class SchedulerService {
         maxHoursPerWeek: p.maxHoursPerWeek,
         timePreference: p.timePreference,
         isStrictTimeRequirement: p.isStrictTimeRequirement, // 🚨 NEW: Passing the bypass flag to Python!
-        unavailableDays: p.unavailability?.map(u => u.dayOfWeek) || [] 
+        // The times each week when the teacher cannot teach (a whole day is
+        // 08:00 to 18:30): scheduler-brain keeps their classes out of them.
+        unavailableTimes: (p.unavailability || []).map((u) => ({
+          dayOfWeek: u.dayOfWeek,
+          startTime: u.startTime,
+          endTime: u.endTime,
+        })),
       })),
       classes: classes.map(c => ({
         id: c.id,

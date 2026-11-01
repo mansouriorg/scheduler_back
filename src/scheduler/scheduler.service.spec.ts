@@ -115,7 +115,9 @@ const expectedPayload = {
       maxHoursPerWeek: 12,
       timePreference: 'MORNING',
       isStrictTimeRequirement: false,
-      unavailableDays: ['FRIDAY'],
+      unavailableTimes: [
+        { dayOfWeek: 'FRIDAY', startTime: '08:00', endTime: '18:00' },
+      ],
     },
   ],
   classes: [

@@ -1,10 +1,14 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProfessorsService } from './professors.service';
 
-// Tests for changing and deleting teachers. The database (PrismaService) is a
-// stand-in: nothing real is read or written.
+// Tests for listing, changing and deleting teachers, and for their times off.
+// The database (PrismaService) is a stand-in: nothing real is read or written.
 
 const teacher = {
   id: 'prof-1',
@@ -15,8 +19,33 @@ const teacher = {
   isStrictTimeRequirement: false,
 };
 
+// A class of the teacher that is in the timetable on Monday, 08:30 to 10:00.
+const mondayLecture = {
+  type: 'LECTURE',
+  dayOfWeek: 'MONDAY',
+  startTime: '08:30',
+  endTime: '10:00',
+  courseOffering: {
+    course: { code: 'DEV-101' },
+    cohort: { name: 'SE - Year 1' },
+  },
+};
+
+// The order in which times off are read back.
+const TIMES_OFF_ORDER = {
+  unavailability: { orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }] },
+};
+
 type PrismaStandIn = {
-  professor: { findUnique: jest.Mock; update: jest.Mock; delete: jest.Mock };
+  professor: {
+    findMany: jest.Mock;
+    findUnique: jest.Mock;
+    update: jest.Mock;
+    delete: jest.Mock;
+  };
+  classComponent: { findMany: jest.Mock };
+  professorUnavailability: { deleteMany: jest.Mock; createMany: jest.Mock };
+  $transaction: jest.Mock;
 };
 
 describe('ProfessorsService', () => {
@@ -26,10 +55,17 @@ describe('ProfessorsService', () => {
   beforeEach(async () => {
     prisma = {
       professor: {
+        findMany: jest.fn().mockResolvedValue([teacher]),
         findUnique: jest.fn(),
         update: jest.fn().mockResolvedValue(teacher),
         delete: jest.fn().mockResolvedValue(teacher),
       },
+      classComponent: { findMany: jest.fn().mockResolvedValue([]) },
+      professorUnavailability: {
+        deleteMany: jest.fn().mockReturnValue('old times taken away'),
+        createMany: jest.fn().mockReturnValue('new times saved'),
+      },
+      $transaction: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -40,6 +76,167 @@ describe('ProfessorsService', () => {
     }).compile();
 
     service = module.get<ProfessorsService>(ProfessorsService);
+  });
+
+  describe('findAll', () => {
+    it('lists the teachers by name, each with their times off in order', async () => {
+      await service.findAll();
+
+      expect(prisma.professor.findMany).toHaveBeenCalledWith({
+        orderBy: { name: 'asc' },
+        include: TIMES_OFF_ORDER,
+      });
+    });
+  });
+
+  describe('setUnavailability', () => {
+    const monday = (startTime: string, endTime: string) => ({
+      dayOfWeek: 'MONDAY' as const,
+      startTime,
+      endTime,
+    });
+
+    it('replaces the times off, all together, sorted by day and time', async () => {
+      const saved = { ...teacher, unavailability: [] };
+      prisma.professor.findUnique
+        .mockResolvedValueOnce(teacher)
+        .mockResolvedValueOnce(saved);
+
+      const result = await service.setUnavailability('prof-1', {
+        times: [
+          { dayOfWeek: 'FRIDAY', startTime: '14:00', endTime: '18:30' },
+          monday('08:00', '12:00'),
+        ],
+      });
+
+      expect(prisma.professorUnavailability.deleteMany).toHaveBeenCalledWith({
+        where: { professorId: 'prof-1' },
+      });
+      expect(prisma.professorUnavailability.createMany).toHaveBeenCalledWith({
+        data: [
+          { ...monday('08:00', '12:00'), professorId: 'prof-1' },
+          {
+            dayOfWeek: 'FRIDAY',
+            startTime: '14:00',
+            endTime: '18:30',
+            professorId: 'prof-1',
+          },
+        ],
+      });
+      expect(prisma.$transaction).toHaveBeenCalledWith([
+        'old times taken away',
+        'new times saved',
+      ]);
+      expect(prisma.professor.findUnique).toHaveBeenLastCalledWith({
+        where: { id: 'prof-1' },
+        include: TIMES_OFF_ORDER,
+      });
+      expect(result).toBe(saved);
+    });
+
+    it('takes every time off away with an empty list', async () => {
+      prisma.professor.findUnique.mockResolvedValue(teacher);
+
+      await service.setUnavailability('prof-1', { times: [] });
+
+      expect(prisma.professorUnavailability.createMany).toHaveBeenCalledWith({
+        data: [],
+      });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses, and saves nothing, a time off that ends before it starts', async () => {
+      prisma.professor.findUnique.mockResolvedValue(teacher);
+
+      const error: unknown = await service
+        .setUnavailability('prof-1', { times: [monday('12:00', '10:00')] })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).message).toBe(
+        'A time off must end after it starts: Monday 12:00 to 10:00 does not.',
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('refuses two times off that overlap on one day', async () => {
+      prisma.professor.findUnique.mockResolvedValue(teacher);
+
+      const error: unknown = await service
+        .setUnavailability('prof-1', {
+          times: [monday('10:00', '14:00'), monday('08:00', '12:00')],
+        })
+        .catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).message).toBe(
+        'Two times off overlap on Monday: 08:00 to 12:00 and 10:00 to 14:00. Make them one time off.',
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('refuses, and says why, a time off during a class that is in the timetable', async () => {
+      prisma.professor.findUnique.mockResolvedValue(teacher);
+      prisma.classComponent.findMany.mockResolvedValue([mondayLecture]);
+
+      const error: unknown = await service
+        .setUnavailability('prof-1', { times: [monday('08:00', '12:00')] })
+        .catch((caught: unknown) => caught);
+
+      expect(prisma.classComponent.findMany).toHaveBeenCalledWith({
+        where: {
+          assignedProfessorId: 'prof-1',
+          dayOfWeek: { not: null },
+          startTime: { not: null },
+          endTime: { not: null },
+        },
+        include: {
+          courseOffering: { include: { course: true, cohort: true } },
+        },
+      });
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).message).toBe(
+        'Dr. Amal Ben Salah teaches DEV-101 LECTURE for SE - Year 1 on Monday from 08:30 to 10:00, during the time off Monday 08:00 to 12:00. Choose another teacher for that class on the Course Offerings page, or clear the timetable of its term on the home page, first.',
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('names every class that falls in a time off', async () => {
+      prisma.professor.findUnique.mockResolvedValue(teacher);
+      prisma.classComponent.findMany.mockResolvedValue([
+        mondayLecture,
+        { ...mondayLecture, type: 'TD', startTime: '10:00', endTime: '11:30' },
+      ]);
+
+      const error: unknown = await service
+        .setUnavailability('prof-1', { times: [monday('08:00', '18:30')] })
+        .catch((caught: unknown) => caught);
+
+      const message = (error as ConflictException).message;
+      expect(message).toContain('DEV-101 LECTURE');
+      expect(message).toContain('DEV-101 TD');
+      expect(message).toMatch(/Choose another teacher for those classes/);
+    });
+
+    it('accepts a time off that starts when a class ends', async () => {
+      prisma.professor.findUnique.mockResolvedValue(teacher);
+      prisma.classComponent.findMany.mockResolvedValue([mondayLecture]);
+
+      await service.setUnavailability('prof-1', {
+        times: [monday('10:00', '12:00')],
+      });
+
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers 404, and saves nothing, for a teacher that does not exist', async () => {
+      prisma.professor.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.setUnavailability('gone', { times: [] }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
   });
 
   describe('update', () => {

@@ -1,4 +1,5 @@
 import {
+  describeLectureOrder,
   describeSaturdayClasses,
   describeTimePreferences,
   type PreferenceClass,
@@ -164,6 +165,31 @@ describe('describeSaturdayClasses', () => {
       ),
     ).toBe(
       '7 classes are on Saturday (C1 TD, C2 TD, C3 TD, C4 TD, C5 TD, and 2 more): no time from Monday to Friday was found for them.',
+    );
+  });
+});
+
+describe('describeLectureOrder', () => {
+  const ofCohort = (cls: PreferenceClass, name: string) => ({
+    ...cls,
+    courseOffering: { ...cls.courseOffering, cohort: { name } },
+  });
+  const classes = [
+    ofCohort(aClass('c1', 'LECTURE', 'prof-1'), 'SE - Year 1'),
+    ofCohort(aClass('c2', 'TD', 'prof-2'), 'SE - Year 1'),
+    ofCohort(aClass('c3', 'TP', 'prof-2'), 'SE - Year 2'),
+  ];
+
+  it('says nothing when every lecture comes first', () => {
+    expect(describeLectureOrder(classes, [])).toBe('');
+  });
+
+  it('names the classes earlier in the week than their lecture, with their cohort', () => {
+    expect(describeLectureOrder(classes, ['c2'])).toBe(
+      '1 class is earlier in the week than the lecture of its course: DEV-101 TD (SE - Year 1).',
+    );
+    expect(describeLectureOrder(classes, ['c2', 'c3'])).toBe(
+      '2 classes are earlier in the week than the lecture of their course: DEV-101 TD (SE - Year 1), DEV-101 TP (SE - Year 2).',
     );
   });
 });

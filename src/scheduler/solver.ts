@@ -22,6 +22,9 @@ export type SolverAnswer = {
   scheduledClasses: ScheduledClass[];
   // The classes placed (partly) outside the time of day their teacher prefers.
   outsidePreference?: string[];
+  // The TD, TP and workshop classes placed earlier in the week than a lecture of
+  // their course for the same cohort.
+  beforeLecture?: string[];
 };
 
 // The /solve address of scheduler-brain, from SOLVER_URL (for example

@@ -16,6 +16,7 @@ import {
 } from './solver';
 import { classSize, describeClassesWithoutRoom } from '../common/room-fit';
 import {
+  describeLectureOrder,
   describeSaturdayClasses,
   describeTimePreferences,
 } from './time-preferences';
@@ -246,6 +247,11 @@ export class SchedulerService {
         classes,
         result.scheduledClasses,
       );
+      // Which TD and TP classes are earlier in the week than their lecture.
+      const lectureOrder = describeLectureOrder(
+        classes,
+        result.beforeLecture ?? [],
+      );
       // How many classes are at the time of day their teacher prefers, and
       // which are not (empty when no teacher of these classes prefers one).
       const preferences = describeTimePreferences(
@@ -259,6 +265,7 @@ export class SchedulerService {
         message: [
           `Successfully scheduled ${savedCount} classes checking thousands of individual student conflicts!`,
           saturday,
+          lectureOrder,
           preferences,
         ]
           .filter((part) => part !== '')

@@ -1,8 +1,9 @@
 // What Generate says about when the new classes take place: on Saturday, which
-// scheduler-brain uses only when Monday to Friday have no time for a class, and
-// at the time of day teachers prefer (the "Time Preference" of the Teachers
-// page). That is a wish, not a rule: scheduler-brain puts a class in the part of
-// the day its teacher prefers when it can, and names the classes it placed
+// scheduler-brain uses only when Monday to Friday have no time for a class;
+// earlier in the week than the lecture of their course, which it avoids when it
+// can; and at the time of day teachers prefer (the "Time Preference" of the
+// Teachers page). That is a wish, not a rule: scheduler-brain puts a class in the
+// part of the day its teacher prefers when it can, and names the classes it placed
 // outside it.
 
 // The parts of the day, as the sentence names them (NO_PREFERENCE is none).
@@ -104,4 +105,31 @@ export function describeSaturdayClasses(
   return names.length === 1
     ? `1 class is on Saturday (${listSome(names)}): no time from Monday to Friday was found for it.`
     : `${names.length} classes are on Saturday (${listSome(names)}): no time from Monday to Friday was found for them.`;
+}
+
+// The fields of a class that the sentence about the lectures needs.
+export type OrderClass = PreferenceClass & {
+  courseOffering: { course: { code: string }; cohort: { name: string } };
+};
+
+// One sentence about the TD, TP and workshop classes just placed earlier in the
+// week than the lecture of their course (beforeLecture: their ids, from
+// scheduler-brain). Empty when there is none.
+export function describeLectureOrder(
+  classes: OrderClass[],
+  beforeLecture: string[],
+): string {
+  const early = new Set(beforeLecture);
+  const names = classes
+    .filter((cls) => early.has(cls.id))
+    .map(
+      (cls) =>
+        `${cls.courseOffering.course.code} ${cls.type} (${cls.courseOffering.cohort.name})`,
+    );
+  if (names.length === 0) {
+    return '';
+  }
+  return names.length === 1
+    ? `1 class is earlier in the week than the lecture of its course: ${listSome(names)}.`
+    : `${names.length} classes are earlier in the week than the lecture of their course: ${listSome(names)}.`;
 }

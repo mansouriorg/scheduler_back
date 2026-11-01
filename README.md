@@ -91,6 +91,15 @@ deletes a course without course offerings. Otherwise the delete is refused (409,
 with the reason), because the database would delete its course offerings and their
 classes along with it.
 
+`POST /course-offerings` refuses (409) a course that the cohort already has in that
+term. `PATCH /course-offerings/:id` moves an offering to another term or cohort; its
+course cannot change (400), because its classes were made from that course. A move
+takes the offering's classes out of the timetable (their rooms and times were chosen
+for the old term and cohort); generating the timetable places them again.
+`DELETE /course-offerings/:id` deletes an offering together with its classes. It is
+refused (409, with the reason) while students are enrolled, because their enrollment
+would be lost and the app cannot enroll students yet.
+
 `POST /scheduler/generate` builds the timetable through scheduler-brain. When it
 cannot, the answer says why, and the web app shows that message:
 
@@ -139,6 +148,8 @@ stand-ins.
 - `src/cohorts/cohorts.service.spec.ts`: changing and deleting cohorts.
 - `src/terms/terms.service.spec.ts`: changing and deleting terms.
 - `src/courses/courses.service.spec.ts`: changing and deleting courses.
+- `src/course-offerings/course-offerings.service.spec.ts`: adding, moving and
+  deleting course offerings.
 - `src/prisma/prisma.service.spec.ts`: the message when `DATABASE_URL` is missing.
 - `src/cors-origins.spec.ts`: reading `CORS_ORIGIN`.
 - The other files, made by the Nest generator, check little more than that each

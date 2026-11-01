@@ -6,10 +6,20 @@ import {
 } from '@nestjs/common';
 import { CreateCourseOfferingDto } from './dto/create-course-offering.dto';
 import { UpdateCourseOfferingDto } from './dto/update-course-offering.dto';
+import { AssignTeachersDto } from './dto/assign-teachers.dto';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  findTeacherProblems,
+  refusalAdvice,
+  type TeacherClass,
+} from '../common/teacher-fit';
 
 const OFFERING_NOT_FOUND =
   'This course offering does not exist any more. Reload the page to see the current list.';
+const CLASS_NOT_FOUND =
+  'This class does not exist any more. Reload the page to see the current list.';
+const TEACHER_NOT_FOUND =
+  'This teacher does not exist any more. Reload the page to see the current list.';
 
 // The term, course and cohort of an offering, with their names.
 const NAMES = {
@@ -39,6 +49,15 @@ function describeOffering(offering: {
 }): string {
   return `${offering.course.code} for ${offering.cohort.name} in ${offering.term.name}`;
 }
+
+// An offering as assignTeachers reads it: names, term dates and classes.
+type OfferingWithClasses = {
+  id: string;
+  term: { name: string; startDate: Date; endDate: Date };
+  course: { code: string };
+  cohort: { name: string };
+  classes: (Omit<TeacherClass, 'label'> & { id: string; type: string })[];
+};
 
 @Injectable()
 export class CourseOfferingsService {
@@ -89,7 +108,11 @@ export class CourseOfferingsService {
         term: true,
         course: true,
         cohort: true,
-        classes: { include: { room: ROOM_PLACE } },
+        // Lecture, TD, TP, always in the same order.
+        classes: {
+          include: { room: ROOM_PLACE },
+          orderBy: [{ type: 'asc' }, { id: 'asc' }],
+        },
       },
       orderBy: { term: { startDate: 'desc' } },
     });
@@ -146,6 +169,79 @@ export class CourseOfferingsService {
     });
   }
 
+  // Sets the teacher of some classes of an offering (professorId null: no
+  // teacher). The classes keep their room, day and time. All changes are saved
+  // together, or none: a teacher is refused (409, saying why) who would teach
+  // more hours a week than their maximum, or who is busy or not available at
+  // the time of a class that is already in the timetable. 404 when the
+  // offering, a class or a teacher does not exist any more.
+  async assignTeachers(id: string, dto: AssignTeachersDto) {
+    const offering = await this.prisma.courseOffering.findUnique({
+      where: { id },
+      include: {
+        term: { select: { name: true, startDate: true, endDate: true } },
+        course: { select: { code: true } },
+        cohort: { select: { name: true } },
+        classes: true,
+      },
+    });
+    if (offering === null) {
+      throw new NotFoundException(OFFERING_NOT_FOUND);
+    }
+    const before = new Map(
+      offering.classes.map((cls) => [cls.id, cls.assignedProfessorId]),
+    );
+    const listed = new Set<string>();
+    for (const { classId } of dto.classes) {
+      if (before.has(classId) === false) {
+        throw new NotFoundException(CLASS_NOT_FOUND);
+      }
+      if (listed.has(classId)) {
+        throw new BadRequestException('Each class can be listed only once.');
+      }
+      listed.add(classId);
+    }
+    // Only the classes whose teacher really changes are checked and saved.
+    const changes = dto.classes
+      .map(({ classId, professorId }) => ({
+        classId,
+        professorId: professorId ?? null,
+      }))
+      .filter(
+        ({ classId, professorId }) => before.get(classId) !== professorId,
+      );
+    if (changes.length === 0) {
+      return { changed: 0 };
+    }
+
+    // The teacher of each class once the changes are saved, and the teachers
+    // who get a class (taking a teacher off a class is never refused).
+    const after = new Map(before);
+    for (const { classId, professorId } of changes) {
+      after.set(classId, professorId);
+    }
+    const teacherIds = [
+      ...new Set(
+        changes.flatMap(({ professorId }) =>
+          professorId === null ? [] : [professorId],
+        ),
+      ),
+    ];
+    if (teacherIds.length > 0) {
+      await this.refuseUnfitTeachers(offering, before, after, teacherIds);
+    }
+
+    await this.prisma.$transaction(
+      changes.map(({ classId, professorId }) =>
+        this.prisma.classComponent.update({
+          where: { id: classId },
+          data: { assignedProfessorId: professorId },
+        }),
+      ),
+    );
+    return { changed: changes.length };
+  }
+
   // Deletes an offering together with its classes, which leave the timetable.
   // It is refused (409) while students are enrolled: their enrollment would be
   // lost, and the app cannot enroll students yet.
@@ -166,6 +262,79 @@ export class CourseOfferingsService {
       );
     }
     return this.prisma.courseOffering.delete({ where: { id } });
+  }
+
+  // 409, saying why, when a teacher would teach more hours a week than their
+  // maximum with these classes, or is busy or not available at the time of a
+  // class that is already in the timetable. 404 when a teacher was deleted.
+  // before and after: the teacher of each class before and after the change.
+  private async refuseUnfitTeachers(
+    offering: OfferingWithClasses,
+    before: Map<string, string | null>,
+    after: Map<string, string | null>,
+    teacherIds: string[],
+  ) {
+    const teachers = await this.prisma.professor.findMany({
+      where: { id: { in: teacherIds } },
+      include: { unavailability: true },
+    });
+    const label = (type: string) =>
+      `${offering.course.code} ${type} for ${offering.cohort.name}`;
+    const time: string[] = [];
+    const hours: string[] = [];
+    for (const teacherId of teacherIds) {
+      const teacher = teachers.find((one) => one.id === teacherId);
+      if (teacher === undefined) {
+        throw new NotFoundException(TEACHER_NOT_FOUND);
+      }
+      // The teacher's classes in other offerings whose term shares days with
+      // this one: those weeks count for the hours and the times.
+      const elsewhere = await this.prisma.classComponent.findMany({
+        where: {
+          assignedProfessorId: teacherId,
+          courseOfferingId: { not: offering.id },
+          courseOffering: {
+            term: {
+              startDate: { lte: offering.term.endDate },
+              endDate: { gte: offering.term.startDate },
+            },
+          },
+        },
+        include: { courseOffering: { include: NAMES } },
+      });
+      const mine = offering.classes.filter(
+        (cls) => after.get(cls.id) === teacherId,
+      );
+      const added: TeacherClass[] = mine
+        .filter((cls) => before.get(cls.id) !== teacherId)
+        .map((cls) => ({ ...cls, label: label(cls.type) }));
+      const kept: TeacherClass[] = [
+        ...mine
+          .filter((cls) => before.get(cls.id) === teacherId)
+          .map((cls) => ({ ...cls, label: label(cls.type) })),
+        ...elsewhere.map((cls) => ({
+          ...cls,
+          label: `${cls.courseOffering.course.code} ${cls.type} for ${cls.courseOffering.cohort.name}`,
+        })),
+      ];
+      const problems = findTeacherProblems(
+        teacher,
+        added,
+        kept,
+        offering.term.name,
+      );
+      time.push(...problems.time);
+      hours.push(...problems.hours);
+    }
+    if (time.length > 0 || hours.length > 0) {
+      throw new ConflictException(
+        [
+          ...time,
+          ...hours,
+          refusalAdvice(hours.length > 0, time.length > 0),
+        ].join(' '),
+      );
+    }
   }
 
   // 404 when the term or the cohort was deleted in the meantime.

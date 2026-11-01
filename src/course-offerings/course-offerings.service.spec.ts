@@ -44,6 +44,45 @@ const course = {
 
 const ALL = { term: true, course: true, cohort: true, classes: true };
 
+// The same offering with its classes, as assignTeachers reads it. The lecture
+// is in the timetable on Monday 08:30-10:00 without a teacher; the TP is not
+// in the timetable yet and is taught by Karim Haddad (prof-2).
+const withClasses = {
+  ...offering,
+  term: {
+    name: 'Fall 2026',
+    startDate: new Date('2026-09-01'),
+    endDate: new Date('2027-01-31'),
+  },
+  classes: [
+    {
+      id: 'lecture-1',
+      type: 'LECTURE',
+      durationMinutes: 90,
+      assignedProfessorId: null,
+      dayOfWeek: 'MONDAY',
+      startTime: '08:30',
+      endTime: '10:00',
+    },
+    {
+      id: 'tp-1',
+      type: 'TP',
+      durationMinutes: 120,
+      assignedProfessorId: 'prof-2',
+      dayOfWeek: null,
+      startTime: null,
+      endTime: null,
+    },
+  ],
+};
+
+const amal = {
+  id: 'prof-1',
+  name: 'Amal Ben Ali',
+  maxHoursPerWeek: 12,
+  unavailability: [],
+};
+
 type PrismaStandIn = {
   course: { findUnique: jest.Mock };
   term: { findUnique: jest.Mock };
@@ -56,6 +95,9 @@ type PrismaStandIn = {
     update: jest.Mock;
     delete: jest.Mock;
   };
+  professor: { findMany: jest.Mock };
+  classComponent: { findMany: jest.Mock; update: jest.Mock };
+  $transaction: jest.Mock;
 };
 
 describe('CourseOfferingsService', () => {
@@ -78,6 +120,12 @@ describe('CourseOfferingsService', () => {
         update: jest.fn().mockResolvedValue(offering),
         delete: jest.fn().mockResolvedValue(offering),
       },
+      professor: { findMany: jest.fn().mockResolvedValue([amal]) },
+      classComponent: {
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockReturnValue('one update'),
+      },
+      $transaction: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -170,6 +218,7 @@ describe('CourseOfferingsService', () => {
                 },
               },
             },
+            orderBy: [{ type: 'asc' }, { id: 'asc' }],
           },
         },
         orderBy: { term: { startDate: 'desc' } },
@@ -280,6 +329,182 @@ describe('CourseOfferingsService', () => {
         service.update('gone', { cohortId: 'cohort-2' }),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(prisma.courseOffering.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('assignTeachers', () => {
+    beforeEach(() => {
+      prisma.courseOffering.findUnique.mockResolvedValue(withClasses);
+    });
+
+    it('gives a class its teacher and keeps its place in the timetable', async () => {
+      const result = await service.assignTeachers('offering-1', {
+        classes: [{ classId: 'lecture-1', professorId: 'prof-1' }],
+      });
+
+      expect(result).toEqual({ changed: 1 });
+      expect(prisma.professor.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['prof-1'] } },
+        include: { unavailability: true },
+      });
+      // Her classes of other offerings in terms that share days with Fall 2026.
+      expect(prisma.classComponent.findMany).toHaveBeenCalledWith({
+        where: {
+          assignedProfessorId: 'prof-1',
+          courseOfferingId: { not: 'offering-1' },
+          courseOffering: {
+            term: {
+              startDate: { lte: new Date('2027-01-31') },
+              endDate: { gte: new Date('2026-09-01') },
+            },
+          },
+        },
+        include: {
+          courseOffering: {
+            include: {
+              term: { select: { name: true } },
+              course: { select: { code: true } },
+              cohort: { select: { name: true } },
+            },
+          },
+        },
+      });
+      expect(prisma.classComponent.update).toHaveBeenCalledTimes(1);
+      expect(prisma.classComponent.update).toHaveBeenCalledWith({
+        where: { id: 'lecture-1' },
+        data: { assignedProfessorId: 'prof-1' },
+      });
+      expect(prisma.$transaction).toHaveBeenCalledWith(['one update']);
+    });
+
+    it('refuses, and says why, a teacher who teaches another class at that time', async () => {
+      prisma.classComponent.findMany.mockResolvedValue([
+        {
+          id: 'td-9',
+          type: 'TD',
+          durationMinutes: 120,
+          dayOfWeek: 'MONDAY',
+          startTime: '09:00',
+          endTime: '11:00',
+          courseOffering: {
+            term: { name: 'Fall 2026' },
+            course: { code: 'DB-201' },
+            cohort: { name: 'SE - Year 2' },
+          },
+        },
+      ]);
+
+      const error = await refusal(
+        service.assignTeachers('offering-1', {
+          classes: [{ classId: 'lecture-1', professorId: 'prof-1' }],
+        }),
+      );
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).message).toBe(
+        'Amal Ben Ali cannot teach DEV-101 LECTURE for SE - Year 1 on Monday from 08:30 to 10:00, because at that time Amal Ben Ali teaches DB-201 TD for SE - Year 2 (09:00 to 11:00). Choose another teacher, or clear the timetable and generate it again, so that the classes get times that suit their teachers.',
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('refuses a teacher who would teach more hours than their maximum, and saves nothing', async () => {
+      prisma.professor.findMany.mockResolvedValue([
+        { ...amal, maxHoursPerWeek: 3 },
+      ]);
+
+      const error = await refusal(
+        service.assignTeachers('offering-1', {
+          classes: [
+            { classId: 'lecture-1', professorId: 'prof-1' },
+            { classId: 'tp-1', professorId: 'prof-1' },
+          ],
+        }),
+      );
+
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).message).toBe(
+        'Amal Ben Ali can teach at most 3 hours a week, but would teach 3.5 hours a week in Fall 2026 with these classes. Choose another teacher, or raise the maximum hours on the Teachers page.',
+      );
+      expect(prisma.classComponent.update).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('takes a teacher off a class without any check', async () => {
+      const result = await service.assignTeachers('offering-1', {
+        classes: [{ classId: 'tp-1', professorId: null }],
+      });
+
+      expect(result).toEqual({ changed: 1 });
+      expect(prisma.professor.findMany).not.toHaveBeenCalled();
+      expect(prisma.classComponent.update).toHaveBeenCalledWith({
+        where: { id: 'tp-1' },
+        data: { assignedProfessorId: null },
+      });
+    });
+
+    it('saves nothing when every class keeps its teacher', async () => {
+      const result = await service.assignTeachers('offering-1', {
+        classes: [
+          { classId: 'lecture-1', professorId: null },
+          { classId: 'tp-1', professorId: 'prof-2' },
+        ],
+      });
+
+      expect(result).toEqual({ changed: 0 });
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('answers 404 for a class of another offering', async () => {
+      const error = await refusal(
+        service.assignTeachers('offering-1', {
+          classes: [{ classId: 'other-class', professorId: 'prof-1' }],
+        }),
+      );
+
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect((error as NotFoundException).message).toBe(
+        'This class does not exist any more. Reload the page to see the current list.',
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('answers 404 for a teacher who does not exist any more', async () => {
+      prisma.professor.findMany.mockResolvedValue([]);
+
+      const error = await refusal(
+        service.assignTeachers('offering-1', {
+          classes: [{ classId: 'lecture-1', professorId: 'gone' }],
+        }),
+      );
+
+      expect(error).toBeInstanceOf(NotFoundException);
+      expect((error as NotFoundException).message).toBe(
+        'This teacher does not exist any more. Reload the page to see the current list.',
+      );
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('answers 400 when a class is listed twice', async () => {
+      const error = await refusal(
+        service.assignTeachers('offering-1', {
+          classes: [
+            { classId: 'tp-1', professorId: null },
+            { classId: 'tp-1', professorId: 'prof-1' },
+          ],
+        }),
+      );
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('answers 404 for an offering that does not exist', async () => {
+      prisma.courseOffering.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.assignTeachers('gone', { classes: [] }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      expect(prisma.$transaction).not.toHaveBeenCalled();
     });
   });
 

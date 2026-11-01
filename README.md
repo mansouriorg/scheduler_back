@@ -102,6 +102,15 @@ for the old term and cohort); generating the timetable places them again.
 refused (409, with the reason) while students are enrolled, because their enrollment
 would be lost and the app cannot enroll students yet.
 
+`PATCH /course-offerings/:id/teachers` sets the teacher of some classes, for example
+`{ "classes": [{ "classId": "...", "professorId": "..." }] }` (null: no teacher). The
+classes keep their room, day and time. All changes are saved, or none: it is refused
+(409, with the reason) when a teacher would teach more hours a week than their maximum
+(all classes of terms with overlapping dates count), or is busy or not available at the
+time of a class that is already in the timetable (`src/common/teacher-fit.ts`).
+Generating the timetable keeps the classes it places apart for each teacher; it does
+not see the classes that are already in the timetable.
+
 `POST /scheduler/generate` builds the timetable through scheduler-brain. When it
 cannot, the answer says why, and the web app shows that message:
 
@@ -157,7 +166,9 @@ stand-ins.
 - `src/terms/terms.service.spec.ts`: changing and deleting terms.
 - `src/courses/courses.service.spec.ts`: changing and deleting courses.
 - `src/course-offerings/course-offerings.service.spec.ts`: adding, moving and
-  deleting course offerings.
+  deleting course offerings, and choosing the teachers of their classes.
+- `src/common/teacher-fit.spec.ts`: the weekly hours of a teacher and whether
+  they are free at the time of a class.
 - `src/prisma/prisma.service.spec.ts`: the message when `DATABASE_URL` is missing.
 - `src/cors-origins.spec.ts`: reading `CORS_ORIGIN`.
 - The other files, made by the Nest generator, check little more than that each

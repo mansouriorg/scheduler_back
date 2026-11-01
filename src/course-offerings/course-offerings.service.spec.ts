@@ -7,8 +7,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../prisma/prisma.service';
 import { CourseOfferingsService } from './course-offerings.service';
 
-// Tests for adding, moving and deleting course offerings. The database
-// (PrismaService) is a stand-in: nothing real is read or written.
+// Tests for adding, moving and deleting course offerings, and for choosing the
+// teachers of their classes. The database (PrismaService) is a stand-in:
+// nothing real is read or written.
 
 // DEV-101 offered to SE - Year 1 in Fall 2026, as the service reads it.
 const offering = {
@@ -81,6 +82,37 @@ const amal = {
   name: 'Amal Ben Ali',
   maxHoursPerWeek: 12,
   unavailability: [],
+};
+
+// The term an offering moves to, and Karim Haddad (prof-2, the teacher of the
+// TP above) with a maximum of 3 hours a week.
+const spring2027 = {
+  id: 'term-2',
+  name: 'Spring 2027',
+  startDate: new Date('2027-02-01'),
+  endDate: new Date('2027-06-30'),
+};
+const karim = {
+  id: 'prof-2',
+  name: 'Karim Haddad',
+  maxHoursPerWeek: 3,
+  unavailability: [],
+};
+
+// Another class of Karim's, 90 minutes, in an offering of Spring 2027.
+const karimElsewhere = {
+  id: 'other-td',
+  type: 'TD',
+  durationMinutes: 90,
+  assignedProfessorId: 'prof-2',
+  dayOfWeek: null,
+  startTime: null,
+  endTime: null,
+  courseOffering: {
+    term: { name: 'Spring 2027' },
+    course: { code: 'DB-201' },
+    cohort: { name: 'SE - Year 2' },
+  },
 };
 
 type PrismaStandIn = {
@@ -306,6 +338,72 @@ describe('CourseOfferingsService', () => {
         'DEV-101 for SE - Year 1 in Spring 2027 already exists, so the course cannot be offered to that cohort in that term again.',
       );
       expect(prisma.courseOffering.update).not.toHaveBeenCalled();
+    });
+
+    it('refuses, and moves nothing, a term where a teacher would teach too many hours a week', async () => {
+      prisma.term.findUnique.mockResolvedValue(spring2027);
+      prisma.classComponent.findMany
+        .mockResolvedValueOnce([withClasses.classes[1]])
+        .mockResolvedValueOnce([karimElsewhere]);
+      prisma.professor.findMany.mockResolvedValue([karim]);
+
+      const error = await refusal(
+        service.update('offering-1', { termId: 'term-2' }),
+      );
+
+      expect(prisma.classComponent.findMany).toHaveBeenNthCalledWith(1, {
+        where: {
+          courseOfferingId: 'offering-1',
+          assignedProfessorId: { not: null },
+        },
+      });
+      expect(prisma.classComponent.findMany).toHaveBeenNthCalledWith(2, {
+        where: {
+          assignedProfessorId: 'prof-2',
+          courseOfferingId: { not: 'offering-1' },
+          courseOffering: {
+            term: {
+              startDate: { lte: spring2027.endDate },
+              endDate: { gte: spring2027.startDate },
+            },
+          },
+        },
+        include: {
+          courseOffering: {
+            include: {
+              term: { select: { name: true } },
+              course: { select: { code: true } },
+              cohort: { select: { name: true } },
+            },
+          },
+        },
+      });
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).message).toBe(
+        'Karim Haddad can teach at most 3 hours a week, but would teach 3.5 hours a week in Spring 2027 with this class. Choose another teacher, or raise the maximum hours on the Teachers page.',
+      );
+      expect(prisma.courseOffering.update).not.toHaveBeenCalled();
+    });
+
+    it('moves to another term when its teachers keep within their hours', async () => {
+      prisma.term.findUnique.mockResolvedValue(spring2027);
+      prisma.classComponent.findMany
+        .mockResolvedValueOnce([withClasses.classes[1]])
+        .mockResolvedValueOnce([karimElsewhere]);
+      prisma.professor.findMany.mockResolvedValue([
+        { ...karim, maxHoursPerWeek: 4 },
+      ]);
+
+      await service.update('offering-1', { termId: 'term-2' });
+
+      expect(prisma.courseOffering.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not count the hours when only the cohort changes', async () => {
+      await service.update('offering-1', { cohortId: 'cohort-2' });
+
+      expect(prisma.classComponent.findMany).not.toHaveBeenCalled();
+      expect(prisma.courseOffering.update).toHaveBeenCalledTimes(1);
     });
 
     it('answers 404 for a term that does not exist any more', async () => {

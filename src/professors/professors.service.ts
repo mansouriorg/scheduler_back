@@ -8,7 +8,7 @@ import { CreateProfessorDto } from './dto/create-professor.dto';
 import { UpdateProfessorDto } from './dto/update-professor.dto';
 import { SetUnavailabilityDto, TimeOffDto } from './dto/set-unavailability.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import { dayName, timesOverlap } from '../common/teacher-fit';
+import { dayName, hoursText, timesOverlap } from '../common/teacher-fit';
 
 const TEACHER_NOT_FOUND =
   'This teacher does not exist any more. Reload the page to see the current list.';
@@ -50,8 +50,16 @@ export class ProfessorsService {
   }
 
   // Changes only the fields that were sent; 404 when the teacher does not exist.
+  // A new maximum of hours a week is refused (409, saying why) while the
+  // teacher already teaches more than that.
   async update(id: string, updateProfessorDto: UpdateProfessorDto) {
-    await this.findExisting(id);
+    const professor = await this.findExisting(id);
+    if (updateProfessorDto.maxHoursPerWeek !== undefined) {
+      await this.refuseTooFewHours(
+        professor,
+        updateProfessorDto.maxHoursPerWeek,
+      );
+    }
     return this.prisma.professor.update({
       where: { id },
       data: updateProfessorDto,
@@ -170,6 +178,49 @@ export class ProfessorsService {
         },
       },
     });
+  }
+
+  // 409 when the teacher already teaches more hours a week than the new
+  // maximum, in the busiest term. Every class takes place every week, in the
+  // timetable or not, and the classes of terms whose dates overlap are taught
+  // in the same weeks.
+  private async refuseTooFewHours(
+    professor: { id: string; name: string },
+    maxHoursPerWeek: number,
+  ) {
+    const classes = await this.prisma.classComponent.findMany({
+      where: { assignedProfessorId: professor.id },
+      select: {
+        durationMinutes: true,
+        courseOffering: {
+          select: {
+            term: { select: { name: true, startDate: true, endDate: true } },
+          },
+        },
+      },
+    });
+    let busiest = { term: '', minutes: 0 };
+    for (const { courseOffering } of classes) {
+      const term = courseOffering.term;
+      const minutes = classes
+        .filter(
+          (other) =>
+            other.courseOffering.term.startDate.getTime() <=
+              term.endDate.getTime() &&
+            other.courseOffering.term.endDate.getTime() >=
+              term.startDate.getTime(),
+        )
+        .reduce((sum, other) => sum + other.durationMinutes, 0);
+      if (minutes > busiest.minutes) {
+        busiest = { term: term.name, minutes };
+      }
+    }
+    if (busiest.minutes > maxHoursPerWeek * 60) {
+      const taught = hoursText(busiest.minutes);
+      throw new ConflictException(
+        `${professor.name} already teaches ${taught} a week in ${busiest.term}, so the maximum cannot be ${hoursText(maxHoursPerWeek * 60)}. Choose other teachers for some of those classes on the Course Offerings page first, or keep a maximum of at least ${taught}.`,
+      );
+    }
   }
 
   private async findExisting(id: string) {

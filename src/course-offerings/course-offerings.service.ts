@@ -121,9 +121,11 @@ export class CourseOfferingsService {
   // Moves an offering to another term or cohort; 404 when the offering, the
   // term or the cohort does not exist. Its course cannot change (400): its
   // classes were made from that course. A move is refused (409) when the course
-  // is already offered to that cohort in that term. A new term or cohort takes
-  // the classes out of the timetable, because their rooms and times were
-  // chosen for the old ones; generating the timetable places them again.
+  // is already offered to that cohort in that term, or when a teacher of its
+  // classes would teach more hours a week in the new term than their maximum.
+  // A new term or cohort takes the classes out of the timetable, because their
+  // rooms and times were chosen for the old ones; generating the timetable
+  // places them again.
   async update(id: string, dto: UpdateCourseOfferingDto) {
     const offering = await this.prisma.courseOffering.findUnique({
       where: { id },
@@ -141,8 +143,11 @@ export class CourseOfferingsService {
     const cohortId = dto.cohortId ?? offering.cohortId;
     const moved = termId !== offering.termId || cohortId !== offering.cohortId;
     if (moved) {
-      await this.refuseMissing(termId, cohortId);
+      const term = await this.refuseMissing(termId, cohortId);
       await this.refuseTwin(offering.courseId, termId, cohortId, id);
+      if (termId !== offering.termId) {
+        await this.refuseOverloadedTeachers(offering, term);
+      }
     }
     return this.prisma.courseOffering.update({
       where: { id },
@@ -337,7 +342,78 @@ export class CourseOfferingsService {
     }
   }
 
-  // 404 when the term or the cohort was deleted in the meantime.
+  // 409, saying why, when a teacher of the offering's classes would teach more
+  // hours a week than their maximum in the new term (with their classes of
+  // terms whose dates overlap it). The classes leave the timetable with the
+  // move, so only the hours count, not the times.
+  private async refuseOverloadedTeachers(
+    offering: {
+      id: string;
+      course: { code: string };
+      cohort: { name: string };
+    },
+    term: { name: string; startDate: Date; endDate: Date },
+  ) {
+    const classes = await this.prisma.classComponent.findMany({
+      where: {
+        courseOfferingId: offering.id,
+        assignedProfessorId: { not: null },
+      },
+    });
+    const teacherIds = [
+      ...new Set(
+        classes
+          .map((cls) => cls.assignedProfessorId)
+          .filter((teacherId): teacherId is string => teacherId !== null),
+      ),
+    ];
+    if (teacherIds.length === 0) {
+      return;
+    }
+    const teachers = await this.prisma.professor.findMany({
+      where: { id: { in: teacherIds } },
+      include: { unavailability: true },
+    });
+    const hours: string[] = [];
+    for (const teacher of teachers) {
+      const elsewhere = await this.prisma.classComponent.findMany({
+        where: {
+          assignedProfessorId: teacher.id,
+          courseOfferingId: { not: offering.id },
+          courseOffering: {
+            term: {
+              startDate: { lte: term.endDate },
+              endDate: { gte: term.startDate },
+            },
+          },
+        },
+        include: { courseOffering: { include: NAMES } },
+      });
+      // Out of the timetable after the move: no day and no time.
+      const added: TeacherClass[] = classes
+        .filter((cls) => cls.assignedProfessorId === teacher.id)
+        .map((cls) => ({
+          label: `${offering.course.code} ${cls.type} for ${offering.cohort.name}`,
+          durationMinutes: cls.durationMinutes,
+          dayOfWeek: null,
+          startTime: null,
+          endTime: null,
+        }));
+      const kept: TeacherClass[] = elsewhere.map((cls) => ({
+        ...cls,
+        label: `${cls.courseOffering.course.code} ${cls.type} for ${cls.courseOffering.cohort.name}`,
+      }));
+      hours.push(...findTeacherProblems(teacher, added, kept, term.name).hours);
+    }
+    if (hours.length > 0) {
+      throw new ConflictException(
+        [...hours, refusalAdvice(true, false)].join(' '),
+      );
+    }
+  }
+
+  // 404 when the term or the cohort was deleted in the meantime. Returns the
+  // term.
   private async refuseMissing(termId: string, cohortId: string) {
     const term = await this.prisma.term.findUnique({ where: { id: termId } });
     if (term === null) {
@@ -353,6 +429,7 @@ export class CourseOfferingsService {
         'This cohort does not exist any more. Reload the page to see the current list.',
       );
     }
+    return term;
   }
 
   // 409 when the course is already offered to the cohort in the term (by an

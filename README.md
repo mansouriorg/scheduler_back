@@ -53,6 +53,9 @@ Each folder in `src/` holds one resource with its controller, service and DTOs:
 `PATCH /professors/:id` changes the fields that are sent, and
 `DELETE /professors/:id` deletes a teacher. A delete is refused (409, with the
 reason) while classes are assigned to the teacher, so no class loses its teacher.
+A lower `maxHoursPerWeek` is refused (409, with the reason) while the teacher already
+teaches more hours a week than that in some term (the classes of terms whose dates
+overlap count together).
 `GET /professors` lists each teacher with their times off (`unavailability`).
 
 `PUT /professors/:id/unavailability` sets the times each week when a teacher
@@ -108,7 +111,9 @@ with its room's name, building and floor (`room` is null while it has none).
 term. `PATCH /course-offerings/:id` moves an offering to another term or cohort; its
 course cannot change (400), because its classes were made from that course. A move
 takes the offering's classes out of the timetable (their rooms and times were chosen
-for the old term and cohort); generating the timetable places them again.
+for the old term and cohort); generating the timetable places them again. A move to
+another term is refused (409, with the reason) when a teacher of its classes would
+teach more hours a week there than their maximum.
 `DELETE /course-offerings/:id` deletes an offering together with its classes. It is
 refused (409, with the reason) while students are enrolled, because their enrollment
 would be lost and the app cannot enroll students yet.

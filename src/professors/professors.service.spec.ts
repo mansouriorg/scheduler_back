@@ -31,6 +31,20 @@ const mondayLecture = {
   },
 };
 
+// A class of the teacher, as the check of the maximum hours reads it: its
+// length and the dates of its term.
+const taught = (
+  durationMinutes: number,
+  name: string,
+  startDate: string,
+  endDate: string,
+) => ({
+  durationMinutes,
+  courseOffering: {
+    term: { name, startDate: new Date(startDate), endDate: new Date(endDate) },
+  },
+});
+
 // The order in which times off are read back.
 const TIMES_OFF_ORDER = {
   unavailability: { orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }] },
@@ -249,6 +263,64 @@ describe('ProfessorsService', () => {
         where: { id: 'prof-1' },
         data: { maxHoursPerWeek: 16 },
       });
+    });
+
+    it('refuses, and saves nothing, a maximum below the hours the teacher already teaches', async () => {
+      prisma.professor.findUnique.mockResolvedValue(teacher);
+      prisma.classComponent.findMany.mockResolvedValue([
+        taught(360, 'Fall 2026', '2026-09-01', '2027-01-31'),
+        taught(270, 'Fall 2026', '2026-09-01', '2027-01-31'),
+      ]);
+
+      const error: unknown = await service
+        .update('prof-1', { maxHoursPerWeek: 10 })
+        .catch((caught: unknown) => caught);
+
+      expect(prisma.classComponent.findMany).toHaveBeenCalledWith({
+        where: { assignedProfessorId: 'prof-1' },
+        select: {
+          durationMinutes: true,
+          courseOffering: {
+            select: {
+              term: { select: { name: true, startDate: true, endDate: true } },
+            },
+          },
+        },
+      });
+      expect(error).toBeInstanceOf(ConflictException);
+      expect((error as ConflictException).message).toBe(
+        'Dr. Amal Ben Salah already teaches 10.5 hours a week in Fall 2026, so the maximum cannot be 10 hours. Choose other teachers for some of those classes on the Course Offerings page first, or keep a maximum of at least 10.5 hours.',
+      );
+      expect(prisma.professor.update).not.toHaveBeenCalled();
+    });
+
+    it('counts the classes of terms whose dates overlap as the same weeks', async () => {
+      prisma.professor.findUnique.mockResolvedValue(teacher);
+      prisma.classComponent.findMany.mockResolvedValue([
+        taught(360, 'Fall 2026', '2026-09-01', '2027-01-31'),
+        taught(120, 'Winter School', '2027-01-10', '2027-02-10'),
+        taught(300, 'Summer 2027', '2027-06-01', '2027-07-31'),
+      ]);
+
+      await service.update('prof-1', { maxHoursPerWeek: 8 });
+      expect(prisma.professor.update).toHaveBeenCalledTimes(1);
+
+      const error: unknown = await service
+        .update('prof-1', { maxHoursPerWeek: 7.5 })
+        .catch((caught: unknown) => caught);
+      expect((error as ConflictException).message).toMatch(
+        /^Dr\. Amal Ben Salah already teaches 8 hours a week in Fall 2026, so the maximum cannot be 7\.5 hours\./,
+      );
+      expect(prisma.professor.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not look at the classes when the maximum is not changed', async () => {
+      prisma.professor.findUnique.mockResolvedValue(teacher);
+
+      await service.update('prof-1', { name: 'Dr. Amal Ben Salah' });
+
+      expect(prisma.classComponent.findMany).not.toHaveBeenCalled();
+      expect(prisma.professor.update).toHaveBeenCalledTimes(1);
     });
 
     it('answers 404, and changes nothing, for a teacher that does not exist', async () => {

@@ -66,6 +66,11 @@ delete is refused (409, with the reason) while something is inside: a campus wit
 buildings, a building with floors or a floor with rooms. Otherwise the database
 would delete everything inside along with it.
 
+`PATCH /cohorts/:id` changes a cohort, and `DELETE /cohorts/:id` deletes one that
+has no course offerings and no students. Otherwise the delete is refused (409, with
+the reason): the database would delete its course offerings and their classes, and
+it cannot delete a cohort that students belong to.
+
 `POST /scheduler/generate` builds the timetable through scheduler-brain. When it
 cannot, the answer says why, and the web app shows that message:
 
@@ -108,6 +113,7 @@ stand-ins.
 - `src/rooms/rooms.service.spec.ts`: changing and deleting rooms.
 - `src/campuses/`, `src/buildings/` and `src/floors/`, `*.service.spec.ts`: changing
   and deleting campuses, buildings and floors.
+- `src/cohorts/cohorts.service.spec.ts`: changing and deleting cohorts.
 - `src/prisma/prisma.service.spec.ts`: the message when `DATABASE_URL` is missing.
 - `src/cors-origins.spec.ts`: reading `CORS_ORIGIN`.
 - The other files, made by the Nest generator, check little more than that each

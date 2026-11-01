@@ -1,4 +1,4 @@
-import { HttpException, HttpStatus } from '@nestjs/common';
+import { HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AxiosError } from 'axios';
@@ -81,17 +81,19 @@ function unscheduledClass(
         name: 'Software Engineering - Year 1',
         headcount,
       },
-      term: {
-        id: 'term-1',
-        name: 'Fall 2026',
-        type: 'SEMESTER_1',
-        startDate: new Date('2026-09-01'),
-        endDate: new Date('2027-01-31'),
-      },
       enrollments: [{ studentId: 'student-1' }, { studentId: 'student-2' }],
     },
   };
 }
+
+// The term whose classes are placed.
+const fall2026 = {
+  id: 'term-1',
+  name: 'Fall 2026',
+  type: 'SEMESTER_1',
+  startDate: new Date('2026-09-01'),
+  endDate: new Date('2027-01-31'),
+};
 
 // What scheduler-brain must receive for the data above.
 const expectedPayload = {
@@ -153,8 +155,10 @@ const THIRTY_MINUTES = 30 * 60 * 1000;
 type PrismaStandIn = {
   room: { findMany: jest.Mock };
   professor: { findMany: jest.Mock };
+  term: { findUnique: jest.Mock };
   classComponent: {
     findMany: jest.Mock;
+    count: jest.Mock;
     update: jest.Mock;
     updateMany: jest.Mock;
   };
@@ -177,7 +181,9 @@ describe('SchedulerService', () => {
     prisma = {
       room: { findMany: jest.fn().mockResolvedValue([room]) },
       professor: { findMany: jest.fn().mockResolvedValue([professor]) },
+      term: { findUnique: jest.fn().mockResolvedValue(fall2026) },
       classComponent: {
+        count: jest.fn().mockResolvedValue(3),
         findMany: jest
           .fn()
           .mockResolvedValue([
@@ -222,22 +228,24 @@ describe('SchedulerService', () => {
     }
   });
 
-  it('only picks Semester 1 classes that have no time yet', async () => {
+  it('only picks the classes of the chosen term that have no time yet', async () => {
     prisma.classComponent.findMany.mockResolvedValue([]);
 
-    await service.autoGenerate();
+    await service.autoGenerate('term-1');
 
+    expect(prisma.term.findUnique).toHaveBeenCalledWith({
+      where: { id: 'term-1' },
+    });
     expect(prisma.classComponent.findMany).toHaveBeenCalledWith({
       where: {
         startTime: null,
-        courseOffering: { term: { type: 'SEMESTER_1' } },
+        courseOffering: { termId: 'term-1' },
       },
       include: {
         courseOffering: {
           include: {
             course: true,
             cohort: true,
-            term: true,
             enrollments: { select: { studentId: true } },
           },
         },
@@ -245,16 +253,48 @@ describe('SchedulerService', () => {
     });
   });
 
-  it('says so, and calls nothing, when every class already has a time', async () => {
+  it('says so, and calls nothing, when every class of the term already has a time', async () => {
     prisma.classComponent.findMany.mockResolvedValue([]);
 
-    const result = await service.autoGenerate();
+    const result = await service.autoGenerate('term-1');
 
     expect(result).toEqual({
-      message: 'All Semester 1 classes are already scheduled! Nothing to do.',
+      message:
+        'All classes of Fall 2026 are already in the timetable. Nothing to do.',
     });
     expect(http.post).not.toHaveBeenCalled();
     expect(prisma.classComponent.update).not.toHaveBeenCalled();
+  });
+
+  it('says so when the term has no classes at all', async () => {
+    prisma.classComponent.findMany.mockResolvedValue([]);
+    prisma.classComponent.count.mockResolvedValue(0);
+
+    const result = await service.autoGenerate('term-1');
+
+    expect(prisma.classComponent.count).toHaveBeenCalledWith({
+      where: { courseOffering: { termId: 'term-1' } },
+    });
+    expect(result).toEqual({
+      message:
+        'Fall 2026 has no classes yet. Add course offerings for it on the Course Offerings page first.',
+    });
+    expect(http.post).not.toHaveBeenCalled();
+  });
+
+  it('answers 404, and calls nothing, for a term that does not exist any more', async () => {
+    prisma.term.findUnique.mockResolvedValue(null);
+
+    const error: unknown = await service
+      .autoGenerate('gone')
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(NotFoundException);
+    expect((error as NotFoundException).message).toBe(
+      'This term does not exist any more. Reload the page to see the current list.',
+    );
+    expect(prisma.classComponent.findMany).not.toHaveBeenCalled();
+    expect(http.post).not.toHaveBeenCalled();
   });
 
   it('sends rooms, professors and classes to scheduler-brain', async () => {
@@ -262,7 +302,7 @@ describe('SchedulerService', () => {
       of({ data: { success: true, scheduledClasses: [] } }),
     );
 
-    await service.autoGenerate();
+    await service.autoGenerate('term-1');
 
     expect(http.post).toHaveBeenCalledTimes(1);
     expect(http.post).toHaveBeenCalledWith(
@@ -299,19 +339,15 @@ describe('SchedulerService', () => {
       of({ data: { success: true, scheduledClasses: [] } }),
     );
 
-    await service.autoGenerate();
+    await service.autoGenerate('term-1');
 
     expect(prisma.classComponent.findMany).toHaveBeenNthCalledWith(2, {
       where: {
         startTime: { not: null },
         courseOffering: {
           term: {
-            OR: [
-              {
-                startDate: { lte: new Date('2027-01-31') },
-                endDate: { gte: new Date('2026-09-01') },
-              },
-            ],
+            startDate: { lte: new Date('2027-01-31') },
+            endDate: { gte: new Date('2026-09-01') },
           },
         },
       },
@@ -351,7 +387,7 @@ describe('SchedulerService', () => {
       of({ data: { success: true, scheduledClasses: [] } }),
     );
 
-    await service.autoGenerate();
+    await service.autoGenerate('term-1');
 
     expect(http.post).toHaveBeenCalledWith(
       'http://127.0.0.1:8000/solve',
@@ -369,7 +405,7 @@ describe('SchedulerService', () => {
     ]);
 
     const error: unknown = await service
-      .autoGenerate()
+      .autoGenerate('term-1')
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(HttpException);
@@ -391,7 +427,7 @@ describe('SchedulerService', () => {
       of({ data: { success: true, scheduledClasses: [] } }),
     );
 
-    await service.autoGenerate();
+    await service.autoGenerate('term-1');
 
     expect(http.post).toHaveBeenCalledWith(
       'http://brain.internal:9000/solve',
@@ -425,7 +461,7 @@ describe('SchedulerService', () => {
       }),
     );
 
-    const result = await service.autoGenerate();
+    const result = await service.autoGenerate('term-1');
 
     // Both updates go into one transaction, in this order.
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
@@ -478,7 +514,7 @@ describe('SchedulerService', () => {
     );
 
     const error: unknown = await service
-      .autoGenerate()
+      .autoGenerate('term-1')
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(HttpException);
@@ -497,7 +533,7 @@ describe('SchedulerService', () => {
     );
 
     const error: unknown = await service
-      .autoGenerate()
+      .autoGenerate('term-1')
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(HttpException);
@@ -514,7 +550,7 @@ describe('SchedulerService', () => {
     );
 
     const error: unknown = await service
-      .autoGenerate()
+      .autoGenerate('term-1')
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(HttpException);
@@ -532,7 +568,7 @@ describe('SchedulerService', () => {
     );
 
     const error: unknown = await service
-      .autoGenerate()
+      .autoGenerate('term-1')
       .catch((caught: unknown) => caught);
 
     expect(error).toBeInstanceOf(HttpException);
@@ -572,6 +608,42 @@ describe('SchedulerService', () => {
           '3 classes were taken out of the timetable. Generate the timetable to place them again.',
       });
       expect(http.post).not.toHaveBeenCalled();
+    });
+
+    it('only clears the classes of the chosen term, and names it', async () => {
+      const result = await service.clearTimetable('term-1');
+
+      expect(prisma.classComponent.updateMany).toHaveBeenCalledWith({
+        where: {
+          OR: [
+            { assignedRoomId: { not: null } },
+            { dayOfWeek: { not: null } },
+            { startTime: { not: null } },
+            { endTime: { not: null } },
+          ],
+          courseOffering: { termId: 'term-1' },
+        },
+        data: {
+          assignedRoomId: null,
+          dayOfWeek: null,
+          startTime: null,
+          endTime: null,
+        },
+      });
+      expect(result).toEqual({
+        cleared: 3,
+        message:
+          '3 classes of Fall 2026 were taken out of the timetable. Generate the timetable to place them again.',
+      });
+    });
+
+    it('answers 404, and clears nothing, for a term that does not exist any more', async () => {
+      prisma.term.findUnique.mockResolvedValue(null);
+
+      await expect(service.clearTimetable('gone')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(prisma.classComponent.updateMany).not.toHaveBeenCalled();
     });
 
     it('says so when the timetable is already empty', async () => {

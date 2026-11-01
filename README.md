@@ -110,12 +110,13 @@ classes keep their room, day and time. All changes are saved, or none: it is ref
 time of a class that is already in the timetable (`src/common/teacher-fit.ts`).
 Generating the timetable keeps the classes of each teacher apart.
 
-`POST /scheduler/generate` builds the timetable through scheduler-brain. It places
-the Semester 1 classes that have no time yet. Classes that are already in the
-timetable (in terms whose dates overlap) keep their room, day and time: they are
-sent as `fixedClasses`, and scheduler-brain places the new classes around them, so
-no room, teacher, cohort or student is booked twice. When it cannot, the answer
-says why, and the web app shows that message:
+`POST /scheduler/generate` with `{ "termId": "..." }` builds the timetable of that
+term through scheduler-brain. It places the classes of the term that have no time
+yet (404 when the term does not exist). Classes that are already in the timetable
+(in that term and in terms whose dates overlap) keep their room, day and time:
+they are sent as `fixedClasses`, and scheduler-brain places the new classes around
+them, so no room, teacher, cohort or student is booked twice. When it cannot, the
+answer says why, and the web app shows that message:
 
 - 400: some classes fit in no room (wrong type, too few seats or missing
   equipment); the message names them, and scheduler-brain is not called.
@@ -128,11 +129,12 @@ says why, and the web app shows that message:
 The timetable is saved in one database transaction: if saving fails, no class
 is changed.
 
-`DELETE /scheduler/timetable` clears the timetable: every class loses its room,
-day and time, in one write, and the answer says how many. The classes, their
-teachers and all other data stay; generating the timetable places the classes
-again. This is also how to free a room or a cohort that the rules above refuse
-to change while classes are booked.
+`DELETE /scheduler/timetable?termId=...` clears the timetable of a term (of every
+term without `termId`): each of its classes loses its room, day and time, in one
+write, and the answer says how many. The classes, their teachers and all other
+data stay; generating the timetable places the classes again. This is also how to
+free a room or a cohort that the rules above refuse to change while classes are
+booked.
 
 The data model is in `prisma/schema.prisma`.
 

@@ -1,4 +1,9 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Injectable,
+  HttpException,
+  HttpStatus,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -10,6 +15,9 @@ import {
 } from './solver';
 import { classSize, describeClassesWithoutRoom } from '../common/room-fit';
 
+const TERM_NOT_FOUND =
+  'This term does not exist any more. Reload the page to see the current list.';
+
 @Injectable()
 export class SchedulerService {
   constructor(
@@ -17,8 +25,12 @@ export class SchedulerService {
     private httpService: HttpService,
   ) {}
 
-  async autoGenerate() {
-    console.log('🚀 Gathering data for the Python Brain (Semester 1 Only)...');
+  // Places the classes of one term that are not in the timetable yet; the
+  // classes already in the timetable stay where they are. 404 when the term
+  // does not exist any more.
+  async autoGenerate(termId: string) {
+    const term = await this.findTerm(termId);
+    console.log('🚀 Gathering data for the Python Brain (one term)...');
     
     // 1. Fetch resources from PostgreSQL with geographic and unavailability data
     const rooms = await this.prisma.room.findMany({
@@ -38,22 +50,17 @@ export class SchedulerService {
       }
     });
     
-    // 🚨 Fetch ONLY classes for SEMESTER_1 that haven't been scheduled yet!
+    // 🚨 Fetch ONLY the classes of the chosen term that haven't been scheduled yet!
     const classes = await this.prisma.classComponent.findMany({
       where: { 
         startTime: null,
-        courseOffering: {
-          term: {
-            type: 'SEMESTER_1' // We only schedule one semester at a time!
-          }
-        }
+        courseOffering: { termId: term.id },
       },
       include: { 
         courseOffering: { 
           include: { 
             course: true,
             cohort: true,
-            term: true,
             // Fetch every individual student enrolled in this specific offering
             enrollments: { 
               select: { studentId: true } 
@@ -64,7 +71,15 @@ export class SchedulerService {
     });
 
     if (classes.length === 0) {
-      return { message: 'All Semester 1 classes are already scheduled! Nothing to do.' };
+      const total = await this.prisma.classComponent.count({
+        where: { courseOffering: { termId: term.id } },
+      });
+      return {
+        message:
+          total === 0
+            ? `${term.name} has no classes yet. Add course offerings for it on the Course Offerings page first.`
+            : `All classes of ${term.name} are already in the timetable. Nothing to do.`,
+      };
     }
 
     // Stop here when a class fits in no room (type, seats or equipment):
@@ -89,23 +104,16 @@ export class SchedulerService {
       throw new HttpException(noRoom, HttpStatus.BAD_REQUEST);
     }
 
-    // The classes already in the timetable, in terms whose dates overlap those
-    // of the classes to place: they keep their room, day and time, and
+    // The classes already in the timetable, in this term and in terms whose
+    // dates overlap it: they keep their room, day and time, and
     // scheduler-brain places the new classes around them.
-    const terms = [
-      ...new Map(
-        classes.map((c) => [c.courseOffering.term.id, c.courseOffering.term]),
-      ).values(),
-    ];
     const placed = await this.prisma.classComponent.findMany({
       where: {
         startTime: { not: null },
         courseOffering: {
           term: {
-            OR: terms.map((term) => ({
-              startDate: { lte: term.endDate },
-              endDate: { gte: term.startDate },
-            })),
+            startDate: { lte: term.endDate },
+            endDate: { gte: term.startDate },
           },
         },
       },
@@ -238,10 +246,12 @@ export class SchedulerService {
     }
   }
 
-  // Takes the room, day and time off every class that has one, in one write,
-  // so the next generation places all of them again. The classes, their
-  // teachers and everything else stay. Says how many classes were cleared.
-  async clearTimetable() {
+  // Takes the room, day and time off every class of a term (or of every term
+  // when none is given) that has one, in one write, so the next generation
+  // places all of them again. The classes, their teachers and everything else
+  // stay. Says how many classes were cleared; 404 when the term does not exist.
+  async clearTimetable(termId?: string) {
+    const term = termId === undefined ? null : await this.findTerm(termId);
     const { count } = await this.prisma.classComponent.updateMany({
       where: {
         OR: [
@@ -250,6 +260,7 @@ export class SchedulerService {
           { startTime: { not: null } },
           { endTime: { not: null } },
         ],
+        ...(term === null ? {} : { courseOffering: { termId: term.id } }),
       },
       data: {
         assignedRoomId: null,
@@ -258,13 +269,23 @@ export class SchedulerService {
         endTime: null,
       },
     });
-    const cleared = count === 1 ? '1 class was' : `${count} classes were`;
+    const ofTerm = term === null ? '' : ` of ${term.name}`;
+    const cleared =
+      count === 1 ? `1 class${ofTerm} was` : `${count} classes${ofTerm} were`;
     return {
       cleared: count,
       message:
         count === 0
-          ? 'The timetable is already empty.'
+          ? `The timetable${ofTerm} is already empty.`
           : `${cleared} taken out of the timetable. Generate the timetable to place ${count === 1 ? 'it' : 'them'} again.`,
     };
+  }
+
+  private async findTerm(id: string) {
+    const term = await this.prisma.term.findUnique({ where: { id } });
+    if (term === null) {
+      throw new NotFoundException(TERM_NOT_FOUND);
+    }
+    return term;
   }
 }

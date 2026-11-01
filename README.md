@@ -150,10 +150,13 @@ for it, and the lecture of a course before its TD and TP in the week when it can
 (it answers with the others in `beforeLecture`). The time of day a teacher prefers
 (`timePreference`: mornings, afternoons or evenings) is a wish, not a rule:
 scheduler-brain puts their classes at that time when it can, and answers with the
-classes it could not (`outsidePreference`). The message of a successful generation
-then names the new classes that are on Saturday and those earlier in the week than
-their lecture, says how many of the new classes whose teacher prefers a time of day
-are at that time, and names the others (`src/scheduler/time-preferences.ts`).
+classes it could not (`outsidePreference`). The answer of a successful generation
+has a short `summary` ("12 classes were placed in the timetable of Fall 2026.") and
+`notes`: they name the new classes that are on Saturday and those earlier in the
+week than their lecture, say how many of the new classes whose teacher prefers a
+time of day are at that time, and name the others
+(`src/scheduler/time-preferences.ts`). `message` has the summary and the notes in
+one text.
 
 `DELETE /scheduler/timetable?termId=...` clears the timetable of a term (of every
 term without `termId`): each of its classes loses its room, day and time, in one

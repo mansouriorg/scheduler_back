@@ -490,8 +490,10 @@ describe('SchedulerService', () => {
         endTime: '11:30',
       },
     });
-    expect(result).toMatchObject({ success: true });
-    expect(result.message).toContain('Successfully scheduled 2 classes');
+    expect(result).toMatchObject({
+      success: true,
+      summary: '2 classes were placed in the timetable of Fall 2026.',
+    });
   });
 
   it('says which classes are not at the time of day their teacher prefers', async () => {
@@ -531,12 +533,43 @@ describe('SchedulerService', () => {
 
     // class-1 is taught by Dr. Amal Ben Salah, who prefers mornings; class-2
     // has no teacher.
-    expect(atThatTime.message).toBe(
-      'Successfully scheduled 2 classes checking thousands of individual student conflicts! The class whose teacher prefers a time of day is at that time.',
+    expect(atThatTime).toMatchObject({
+      notes: ['The class whose teacher prefers a time of day is at that time.'],
+    });
+    expect(notAtThatTime).toMatchObject({
+      notes: [
+        'The class whose teacher prefers a time of day is not at that time: DEV-101 TD (Dr. Amal Ben Salah prefers mornings).',
+      ],
+    });
+  });
+
+  it('says so when one class was placed', async () => {
+    prisma.classComponent.findMany.mockResolvedValue([
+      unscheduledClass('class-1', 'TD', 'prof-1'),
+    ]);
+    http.post.mockReturnValue(
+      of({
+        data: {
+          success: true,
+          scheduledClasses: [
+            {
+              classId: 'class-1',
+              roomId: 'room-1',
+              dayOfWeek: 'MONDAY',
+              startTime: '08:30',
+              endTime: '10:00',
+            },
+          ],
+        },
+      }),
     );
-    expect(notAtThatTime.message).toBe(
-      'Successfully scheduled 2 classes checking thousands of individual student conflicts! The class whose teacher prefers a time of day is not at that time: DEV-101 TD (Dr. Amal Ben Salah prefers mornings).',
-    );
+
+    const result = await service.autoGenerate('term-1');
+
+    expect(result).toMatchObject({
+      summary: '1 class was placed in the timetable of Fall 2026.',
+      notes: ['The class whose teacher prefers a time of day is at that time.'],
+    });
   });
 
   it('says which classes are on Saturday', async () => {
@@ -566,8 +599,16 @@ describe('SchedulerService', () => {
 
     const result = await service.autoGenerate('term-1');
 
+    expect(result).toMatchObject({
+      summary: '2 classes were placed in the timetable of Fall 2026.',
+      notes: [
+        '1 class is on Saturday (DEV-101 TP): no time from Monday to Friday was found for it.',
+        'The class whose teacher prefers a time of day is at that time.',
+      ],
+    });
+    // message has the summary and the notes in one text.
     expect(result.message).toBe(
-      'Successfully scheduled 2 classes checking thousands of individual student conflicts! 1 class is on Saturday (DEV-101 TP): no time from Monday to Friday was found for it. The class whose teacher prefers a time of day is at that time.',
+      '2 classes were placed in the timetable of Fall 2026. 1 class is on Saturday (DEV-101 TP): no time from Monday to Friday was found for it. The class whose teacher prefers a time of day is at that time.',
     );
   });
 
@@ -599,9 +640,12 @@ describe('SchedulerService', () => {
 
     const result = await service.autoGenerate('term-1');
 
-    expect(result.message).toBe(
-      'Successfully scheduled 2 classes checking thousands of individual student conflicts! 1 class is earlier in the week than the lecture of its course: DEV-101 TD (Software Engineering - Year 1). The class whose teacher prefers a time of day is at that time.',
-    );
+    expect(result).toMatchObject({
+      notes: [
+        '1 class is earlier in the week than the lecture of its course: DEV-101 TD (Software Engineering - Year 1).',
+        'The class whose teacher prefers a time of day is at that time.',
+      ],
+    });
   });
 
   it('says that nothing was changed when saving the timetable fails', async () => {

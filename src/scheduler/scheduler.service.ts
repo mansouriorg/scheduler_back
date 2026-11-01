@@ -260,16 +260,22 @@ export class SchedulerService {
         result.outsidePreference ?? [],
       );
 
+      // A short summary, and the notes about when some of the new classes take
+      // place (the empty ones are left out). The web app shows the notes as a
+      // list; message has the summary and the notes in one text.
+      const summary =
+        savedCount === 1
+          ? `1 class was placed in the timetable of ${term.name}.`
+          : `${savedCount} classes were placed in the timetable of ${term.name}.`;
+      const notes = [saturday, lectureOrder, preferences].filter(
+        (note) => note !== '',
+      );
+
       return {
         success: true,
-        message: [
-          `Successfully scheduled ${savedCount} classes checking thousands of individual student conflicts!`,
-          saturday,
-          lectureOrder,
-          preferences,
-        ]
-          .filter((part) => part !== '')
-          .join(' '),
+        summary,
+        notes,
+        message: [summary, ...notes].join(' '),
       };
     } catch (error: unknown) {
       // "No timetable is possible" (thrown above) already carries the solver's

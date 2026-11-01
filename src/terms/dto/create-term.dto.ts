@@ -9,7 +9,7 @@ export class CreateTermDto {
 
   // IsDateString ensures the frontend sent a valid ISO-8601 date string
   @IsDateString()
-  startDate: string; 
+  startDate: string;
 
   @IsDateString()
   endDate: string;

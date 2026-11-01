@@ -1,7 +1,18 @@
-import { IsString, IsNumber, IsArray, ValidateNested, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  IsArray,
+  ValidateNested,
+  IsEnum,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 // Import your strict Enums from your custom generated Prisma client path!
-import { ComponentType, RoomType, Equipment, TermType } from 'generated/prisma/client';
+import {
+  ComponentType,
+  RoomType,
+  Equipment,
+  TermType,
+} from 'generated/prisma/client';
 
 class ComponentTemplateDto {
   @IsEnum(ComponentType)

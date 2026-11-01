@@ -166,6 +166,9 @@ The data model is in `prisma/schema.prisma`.
 | `pnpm lint`               | ESLint; note that it also fixes files         |
 | `pnpm format`             | Prettier; rewrites the files in `src/`        |
 
+Most files in `src/` follow Prettier; `src/scheduler/scheduler.service.ts` does not yet
+(its older lines are not formatted).
+
 ## Tests
 
 `pnpm test` runs the unit tests in `src/`. They need neither the database nor

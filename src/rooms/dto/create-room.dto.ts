@@ -1,4 +1,11 @@
-import { IsString, IsNumber, Min, IsEnum, IsArray, IsOptional } from 'class-validator';
+import {
+  IsString,
+  IsNumber,
+  Min,
+  IsEnum,
+  IsArray,
+  IsOptional,
+} from 'class-validator';
 import { RoomType, Equipment } from 'generated/prisma/enums';
 
 export class CreateRoomDto {

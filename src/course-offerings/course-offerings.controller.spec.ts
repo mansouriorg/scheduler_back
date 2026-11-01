@@ -15,7 +15,9 @@ describe('CourseOfferingsController', () => {
       .useMocker(() => ({}))
       .compile();
 
-    controller = module.get<CourseOfferingsController>(CourseOfferingsController);
+    controller = module.get<CourseOfferingsController>(
+      CourseOfferingsController,
+    );
   });
 
   it('should be defined', () => {

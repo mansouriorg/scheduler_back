@@ -50,6 +50,7 @@ type PrismaStandIn = {
   cohort: { findUnique: jest.Mock };
   courseOffering: {
     findUnique: jest.Mock;
+    findMany: jest.Mock;
     findFirst: jest.Mock;
     create: jest.Mock;
     update: jest.Mock;
@@ -71,6 +72,7 @@ describe('CourseOfferingsService', () => {
       cohort: { findUnique: jest.fn().mockResolvedValue({ id: 'cohort-2' }) },
       courseOffering: {
         findUnique: jest.fn().mockResolvedValue(offering),
+        findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(offering),
         update: jest.fn().mockResolvedValue(offering),
@@ -142,6 +144,36 @@ describe('CourseOfferingsService', () => {
         'DEV-101 for SE - Year 1 in Fall 2026 already exists, so the course cannot be offered to that cohort in that term again.',
       );
       expect(prisma.courseOffering.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findAll', () => {
+    it('lists the offerings with the room and place of each class', async () => {
+      await service.findAll();
+
+      expect(prisma.courseOffering.findMany).toHaveBeenCalledWith({
+        include: {
+          term: true,
+          course: true,
+          cohort: true,
+          classes: {
+            include: {
+              room: {
+                select: {
+                  name: true,
+                  floor: {
+                    select: {
+                      level: true,
+                      building: { select: { name: true, code: true } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: { term: { startDate: 'desc' } },
+      });
     });
   });
 

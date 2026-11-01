@@ -91,6 +91,8 @@ deletes a course without course offerings. Otherwise the delete is refused (409,
 with the reason), because the database would delete its course offerings and their
 classes along with it.
 
+`GET /course-offerings` lists the offerings with their classes; each class comes
+with its room's name, building and floor (`room` is null while it has none).
 `POST /course-offerings` refuses (409) a course that the cohort already has in that
 term. `PATCH /course-offerings/:id` moves an offering to another term or cohort; its
 course cannot change (400), because its classes were made from that course. A move

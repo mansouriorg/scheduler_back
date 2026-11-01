@@ -18,6 +18,19 @@ const NAMES = {
   cohort: { select: { name: true } },
 } as const;
 
+// The name of a room and where it is: building and floor.
+const ROOM_PLACE = {
+  select: {
+    name: true,
+    floor: {
+      select: {
+        level: true,
+        building: { select: { name: true, code: true } },
+      },
+    },
+  },
+} as const;
+
 // "DEV-101 for SE - Year 1 in Fall 2026".
 function describeOffering(offering: {
   course: { code: string };
@@ -69,13 +82,14 @@ export class CourseOfferingsService {
   }
 
   async findAll() {
-    // Everything the Offerings page shows: names and the classes.
+    // Everything the Offerings page and the timetable show: names, and the
+    // classes with the name and place of their room.
     return this.prisma.courseOffering.findMany({
       include: {
         term: true,
         course: true,
         cohort: true,
-        classes: true,
+        classes: { include: { room: ROOM_PLACE } },
       },
       orderBy: { term: { startDate: 'desc' } },
     });

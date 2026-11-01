@@ -15,7 +15,10 @@ import {
   type SolverAnswer,
 } from './solver';
 import { classSize, describeClassesWithoutRoom } from '../common/room-fit';
-import { describeTimePreferences } from './time-preferences';
+import {
+  describeSaturdayClasses,
+  describeTimePreferences,
+} from './time-preferences';
 
 const TERM_NOT_FOUND =
   'This term does not exist any more. Reload the page to see the current list.';
@@ -238,6 +241,11 @@ export class SchedulerService {
         );
       }
       const savedCount = updates.length;
+      // Which new classes are on Saturday (empty when none is).
+      const saturday = describeSaturdayClasses(
+        classes,
+        result.scheduledClasses,
+      );
       // How many classes are at the time of day their teacher prefers, and
       // which are not (empty when no teacher of these classes prefers one).
       const preferences = describeTimePreferences(
@@ -250,6 +258,7 @@ export class SchedulerService {
         success: true,
         message: [
           `Successfully scheduled ${savedCount} classes checking thousands of individual student conflicts!`,
+          saturday,
           preferences,
         ]
           .filter((part) => part !== '')

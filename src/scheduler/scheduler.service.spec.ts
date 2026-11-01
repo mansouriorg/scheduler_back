@@ -539,6 +539,38 @@ describe('SchedulerService', () => {
     );
   });
 
+  it('says which classes are on Saturday', async () => {
+    http.post.mockReturnValue(
+      of({
+        data: {
+          success: true,
+          scheduledClasses: [
+            {
+              classId: 'class-1',
+              roomId: 'room-1',
+              dayOfWeek: 'MONDAY',
+              startTime: '08:30',
+              endTime: '10:00',
+            },
+            {
+              classId: 'class-2',
+              roomId: 'room-1',
+              dayOfWeek: 'SATURDAY',
+              startTime: '10:00',
+              endTime: '11:30',
+            },
+          ],
+        },
+      }),
+    );
+
+    const result = await service.autoGenerate('term-1');
+
+    expect(result.message).toBe(
+      'Successfully scheduled 2 classes checking thousands of individual student conflicts! 1 class is on Saturday (DEV-101 TP): no time from Monday to Friday was found for it. The class whose teacher prefers a time of day is at that time.',
+    );
+  });
+
   it('says that nothing was changed when saving the timetable fails', async () => {
     http.post.mockReturnValue(
       of({

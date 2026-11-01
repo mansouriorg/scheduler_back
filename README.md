@@ -145,12 +145,13 @@ answer says why, and the web app shows that message:
 The timetable is saved in one database transaction: if saving fails, no class
 is changed.
 
-The time of day a teacher prefers (`timePreference`: mornings, afternoons or
-evenings) is a wish, not a rule: scheduler-brain puts their classes at that time
+scheduler-brain puts a class on Saturday only when Monday to Friday have no time
+for it. The time of day a teacher prefers (`timePreference`: mornings, afternoons
+or evenings) is a wish, not a rule: scheduler-brain puts their classes at that time
 when it can, and answers with the classes it could not (`outsidePreference`). The
-message of a successful generation then says how many of the new classes whose
-teacher prefers a time of day are at that time, and names the others
-(`src/scheduler/time-preferences.ts`).
+message of a successful generation then names the new classes that are on
+Saturday, says how many of the new classes whose teacher prefers a time of day are
+at that time, and names the others (`src/scheduler/time-preferences.ts`).
 
 `DELETE /scheduler/timetable?termId=...` clears the timetable of a term (of every
 term without `termId`): each of its classes loses its room, day and time, in one
@@ -190,8 +191,8 @@ stand-ins.
   fails), and clearing the timetable.
 - `src/scheduler/solver.spec.ts`: the `SOLVER_URL` and `SOLVER_TIMEOUT_SECONDS`
   settings, and the error messages listed under Resources.
-- `src/scheduler/time-preferences.spec.ts`: the sentence about the times of day
-  teachers prefer.
+- `src/scheduler/time-preferences.spec.ts`: the sentences about the classes on
+  Saturday and the times of day teachers prefer.
 - `src/professors/professors.service.spec.ts`: listing, changing and deleting
   teachers, and setting their times off.
 - `src/rooms/rooms.service.spec.ts`: changing and deleting rooms.

@@ -1,4 +1,5 @@
 import {
+  describeSaturdayClasses,
   describeTimePreferences,
   type PreferenceClass,
   type PreferenceTeacher,
@@ -110,5 +111,59 @@ describe('describeTimePreferences', () => {
     expect(
       describeTimePreferences(classes, [amal, sara], ['c2', 'c3', 'c4']),
     ).toBe('The class whose teacher prefers a time of day is at that time.');
+  });
+});
+
+describe('describeSaturdayClasses', () => {
+  const classes = [
+    aClass('c1', 'LECTURE', 'prof-1'),
+    aClass('c2', 'TD', null, 'DB-201'),
+    aClass('c3', 'TP', 'prof-2'),
+  ];
+  const on = (classId: string, dayOfWeek: string) => ({ classId, dayOfWeek });
+
+  it('says nothing when no new class is on Saturday', () => {
+    expect(
+      describeSaturdayClasses(classes, [
+        on('c1', 'MONDAY'),
+        on('c2', 'FRIDAY'),
+      ]),
+    ).toBe('');
+  });
+
+  it('names the classes on Saturday', () => {
+    expect(
+      describeSaturdayClasses(classes, [
+        on('c1', 'MONDAY'),
+        on('c2', 'SATURDAY'),
+        on('c3', 'TUESDAY'),
+      ]),
+    ).toBe(
+      '1 class is on Saturday (DB-201 TD): no time from Monday to Friday was found for it.',
+    );
+    expect(
+      describeSaturdayClasses(classes, [
+        on('c1', 'SATURDAY'),
+        on('c2', 'SATURDAY'),
+        on('c3', 'TUESDAY'),
+      ]),
+    ).toBe(
+      '2 classes are on Saturday (DEV-101 LECTURE, DB-201 TD): no time from Monday to Friday was found for them.',
+    );
+  });
+
+  it('names five classes at most and counts the others', () => {
+    const many = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'].map((id) =>
+      aClass(id, 'TD', null, id.toUpperCase()),
+    );
+
+    expect(
+      describeSaturdayClasses(
+        many,
+        many.map((cls) => on(cls.id, 'SATURDAY')),
+      ),
+    ).toBe(
+      '7 classes are on Saturday (C1 TD, C2 TD, C3 TD, C4 TD, C5 TD, and 2 more): no time from Monday to Friday was found for them.',
+    );
   });
 });

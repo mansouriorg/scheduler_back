@@ -20,6 +20,8 @@ export type SolverAnswer = {
   success: boolean;
   message?: string;
   scheduledClasses: ScheduledClass[];
+  // The classes placed (partly) outside the time of day their teacher prefers.
+  outsidePreference?: string[];
 };
 
 // The /solve address of scheduler-brain, from SOLVER_URL (for example

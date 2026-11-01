@@ -15,6 +15,7 @@ import {
   type SolverAnswer,
 } from './solver';
 import { classSize, describeClassesWithoutRoom } from '../common/room-fit';
+import { describeTimePreferences } from './time-preferences';
 
 const TERM_NOT_FOUND =
   'This term does not exist any more. Reload the page to see the current list.';
@@ -237,10 +238,22 @@ export class SchedulerService {
         );
       }
       const savedCount = updates.length;
+      // How many classes are at the time of day their teacher prefers, and
+      // which are not (empty when no teacher of these classes prefers one).
+      const preferences = describeTimePreferences(
+        classes,
+        professors,
+        result.outsidePreference ?? [],
+      );
 
       return {
         success: true,
-        message: `Successfully scheduled ${savedCount} classes checking thousands of individual student conflicts!`,
+        message: [
+          `Successfully scheduled ${savedCount} classes checking thousands of individual student conflicts!`,
+          preferences,
+        ]
+          .filter((part) => part !== '')
+          .join(' '),
       };
     } catch (error: unknown) {
       // "No timetable is possible" (thrown above) already carries the solver's

@@ -494,6 +494,51 @@ describe('SchedulerService', () => {
     expect(result.message).toContain('Successfully scheduled 2 classes');
   });
 
+  it('says which classes are not at the time of day their teacher prefers', async () => {
+    const placed = (classId: string, startTime: string, endTime: string) => ({
+      classId,
+      roomId: 'room-1',
+      dayOfWeek: 'MONDAY',
+      startTime,
+      endTime,
+    });
+    http.post.mockReturnValueOnce(
+      of({
+        data: {
+          success: true,
+          scheduledClasses: [
+            placed('class-1', '08:30', '10:00'),
+            placed('class-2', '10:00', '11:30'),
+          ],
+        },
+      }),
+    );
+    http.post.mockReturnValueOnce(
+      of({
+        data: {
+          success: true,
+          scheduledClasses: [
+            placed('class-1', '14:00', '15:30'),
+            placed('class-2', '10:00', '11:30'),
+          ],
+          outsidePreference: ['class-1'],
+        },
+      }),
+    );
+
+    const atThatTime = await service.autoGenerate('term-1');
+    const notAtThatTime = await service.autoGenerate('term-1');
+
+    // class-1 is taught by Dr. Amal Ben Salah, who prefers mornings; class-2
+    // has no teacher.
+    expect(atThatTime.message).toBe(
+      'Successfully scheduled 2 classes checking thousands of individual student conflicts! The class whose teacher prefers a time of day is at that time.',
+    );
+    expect(notAtThatTime.message).toBe(
+      'Successfully scheduled 2 classes checking thousands of individual student conflicts! The class whose teacher prefers a time of day is not at that time: DEV-101 TD (Dr. Amal Ben Salah prefers mornings).',
+    );
+  });
+
   it('says that nothing was changed when saving the timetable fails', async () => {
     http.post.mockReturnValue(
       of({
